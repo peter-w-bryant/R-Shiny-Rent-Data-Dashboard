@@ -1,0 +1,117 @@
+```{r}
+library(tidyverse)
+library(shiny)
+library(maps)
+
+inventory <-read_csv("data/RDC_Inventory_Core_Metrics_State_History.csv")
+# education_spending <- read_csv("data/education_spending.csv")
+# head(education_spending)
+
+education_spending <- read_csv("data/school_revenue.csv")
+
+us_total_spending <- education_spending %>% 
+  rename(State = `Geographic area`) %>%
+  filter(`State` == "United States")
+
+education_spending <- education_spending %>%
+  rename(State = `Geographic area`) %>%                                     # rename column to state
+  filter(State != "United States") %>%                                      # remove the US record
+  mutate(`State Sources` = as.numeric(gsub(",", "", `State Sources`))) %>%  # convert state sources to numeric
+  mutate(State = gsub("\\.", "", State))                                    # remove trailing periods from states column
+
+education_spending
+
+education_spending %>% 
+  filter(State == "Wisconsin")
+```
+
+```{r}
+# Define UI
+ui <- fluidPage(
+  tags$h1("Click on a US state"),
+  sidebarLayout(
+    sidebarPanel(
+      h5("Instructions"),
+      p("Click on a state to select it as input."),
+      hr(),
+      verbatimTextOutput("selected_state"),
+      uiOutput("map_color_input"),
+      
+      fluidRow(dataTableOutput("state_data")) # New line to render table under sidebar)
+    ),
+    mainPanel(
+      plotOutput("us_map", click = "plot_click", width = "800px", height = "700px")
+      
+    )
+  )
+)
+
+# Define server
+server <- function(input, output, session) {
+  
+  # Create US map
+  output$us_map <- renderPlot({
+    # If the "Education Revenue/Spending" option is selected, color the states based on the Total column
+    if (input$map_color == "Education Revenue/Spending") {
+      map_data <- map_data("state") %>% 
+        left_join(education_spending, by = c("region" = "State")) %>% 
+        mutate(fill_color = scales::rescale(Total, to = c(1, 100)))
+      
+      # Plot the map
+      par(mar = c(2, 2, 2, 2))
+      map_data %>% 
+        ggplot(aes(x = long, y = lat, group = group, fill = fill_color)) +
+        geom_polygon(color = "white") +
+        coord_quickmap() +
+        theme_void()
+    } else {
+      # If the "Education Revenue/Spending" option is not selected, plot the map with default colors
+      par(mar = c(2, 2, 2, 2))
+      map_data("state") %>% 
+        ggplot(aes(x = long, y = lat, group = group)) +
+        geom_polygon(color = "white") +
+        coord_quickmap() +
+        theme_void()
+    }
+  })
+  
+  # Create reactive value for selected state
+  selected_state <- reactiveValues(state = NULL)
+  
+  # Update selected state when user clicks on map
+  observeEvent(input$plot_click, {
+    click_loc <- input$plot_click
+    state_name <- map.where("state", click_loc$x, click_loc$y)
+    selected_state$state <- state_name
+  })
+  
+  # Display selected state in sidebar with uppercase first letter
+  output$selected_state <- renderPrint({
+    if (!is.null(selected_state$state)) {
+      paste0("Selected state: ", str_to_title(selected_state$state))
+    } else {
+      "Please click on a state."
+    }
+  })
+  
+  # Render education spending data table
+  output$state_data <- renderDataTable({
+    if (!is.null(selected_state$state)) {
+      education_spending %>% filter(State == str_to_title(selected_state$state))
+    } else {
+      NULL
+    }
+  })
+  
+  # Create input for selecting map color
+  output$map_color_input <- renderUI({
+    selectInput("map_color", "Color Map By:", choices = c("Education Revenue/Spending"))
+  })
+  
+}
+
+# Run the app
+shinyApp(ui = ui, server = server)
+
+```
+
