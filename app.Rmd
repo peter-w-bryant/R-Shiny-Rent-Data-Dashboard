@@ -1,39 +1,54 @@
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(shiny)
 library(maps)
 library(scales)
+```
 
-education_spending <- read_csv("data/school_revenue.csv")
+```{r, message=FALSE}
+# state population data
+state_pop_2022 = read_csv("https://uwmadison.box.com/shared/static/z4zms2iesc8rr6lov8x3p74or2q7syyp.csv") %>% 
+  mutate(`Population` = `Population`*1e6)
 
-# Store the US record and convert rename the state column
-us_total_spending <- education_spending %>% 
-  rename(State = `Geographic area`) %>%
-  filter(`State` == "United States")
-
-# Remove the US record and convert state sources to numeric
-education_spending <- education_spending %>%
-  rename(State = `Geographic area`) %>% # rename column to state
-  filter(State != "United States") %>%  # remove the US record
-  mutate(`State Sources` = as.numeric(  # convert state sources to numeric
-          gsub(",", "", `State Sources`)
-        )) %>% 
-  mutate(State = gsub("\\.", "", State)) %>%# remove trailing periods from states column
-  mutate(State = tolower(State)) %>%  # convert state names to lowercase
-  mutate(State = gsub(":main", "", State)) # remove ":main" from state names
-
-education_spending %>% 
-  filter(State == "new york:main")
-
-head(education_spending)
-
-map_data("state", exact = FALSE) %>%
-  #mutate(region = gsub(":main", "", region)) %>%# remove ":main" from state names
-  filter(str_detect(region, "new york"))
+# number of hospitals/state
+hospitals <- read_csv("https://uwmadison.box.com/shared/static/pywujigfcjq83ka272igh6j1kn03ssqv.csv") %>%
+  mutate(State = str_remove(State, "^\\w+\\s+-\\s+")) %>% # remove "abbrev -" from State col
+  left_join(state_pop_2022) %>%  # join state population data set
+  mutate(`People Per Hospital` = `Population` / `Number Hospitals`) %>% # create new people per hospital col
+  mutate(State = tolower(State)) %>%  # make the state name lower case
+  drop_na() %>%  #remove missing values
+  select(`State`, `People Per Hospital`, `Number Hospitals`, `Staffed Beds`, `Total Discharges`) # change ordering
   
+# head(hospitals)
+```
 
-
-        #left_join(education_spending, by = c("region" = "State"))
+```{r}
+education_spending_ppcs <- read_csv("data/education_spending_ppcs.csv") %>% 
+  rename(State = `Geographic area`) %>% 
+  select(`State`, `PPCS`) %>% 
+  drop_na() %>% 
+  mutate(State = gsub("\\.", "", State)) %>%
+  mutate(State = tolower(State))             
+head(education_spending_ppcs)
+```
+```{r}
+# Function for creating map plot
+create_map_plot <- function(map_data, fill_var, title, low_is_good) {
+  par(mar = c(2, 2, 2, 2))
+  ggplot(map_data, aes(x = long, y = lat, group = group, fill = !!sym(fill_var))) +
+    geom_polygon(color = "white") +
+    scale_fill_gradientn(
+      colors = if (low_is_good) c("darkgreen", "green", "yellow", "orange", "red", "darkred")
+                else c("darkred", "red", "orange", "yellow", "green", "darkgreen"),
+      guide = guide_colorbar(
+        title = title,
+        ticks = FALSE,
+        barwidth = 3          
+      )
+    ) +
+    coord_quickmap() +
+    theme_void()
+}
 ```
 
 ```{r}
@@ -48,10 +63,10 @@ ui <- fluidPage(
       verbatimTextOutput("selected_state"),
       uiOutput("map_var_input"),
       
-      fluidRow(dataTableOutput("state_data")) # New line to render table under sidebar)
+      fluidRow(dataTableOutput("state_data")) 
     ),
     mainPanel(
-      plotOutput("us_map", click = "plot_click", width = "800px", height = "700px")
+      plotOutput("us_map", click = "plot_click", width = "800px", height = "800px")
       
     )
   )
@@ -62,28 +77,20 @@ server <- function(input, output, session) {
   
   # Create US map
   output$us_map <- renderPlot({
-    # If the "Education Revenue/Spending" option is selected, color the states based on the Total column
-    if (input$map_var == "Education Revenue/Spending") {
+    # If the "Education Spending" option is selected, color the states based on the Total column
+    if (input$map_var == "Education Spending") {
       map_data <- map_data("state", exact = FALSE) %>%
-        #mutate(region = gsub(":main", "", region)) %>% # remove ":main" from state names
-        left_join(education_spending, by = c("region" = "State")) %>% 
-        mutate(fill_color = Total / 1e6)
-      
-      par(mar = c(2, 2, 2, 2))
-      map_data %>% 
-      ggplot(aes(x = long, y = lat, group = group, fill = fill_color)) +
-        geom_polygon(color = "white") +
-        scale_fill_gradientn(
-          colors = c("darkred", "red", "orange", "yellow", "green", "darkgreen"),
-          guide = guide_colorbar(
-            title = "Total (millions)",
-            ticks = FALSE,
-            barwidth = 5          
-            )
-        ) +
-        coord_quickmap() +
-        theme_void()
+        left_join(education_spending_ppcs, by = c("region" = "State")) %>% 
+        mutate(fill_color = PPCS / 1e3)
+      create_map_plot(map_data, "fill_color", "Total (thousands)", FALSE)
+    } 
+    else if (input$map_var == "# Citizens Per Hospital") {
+      map_data <- map_data("state", exact = FALSE) %>%
+        left_join(hospitals, by = c("region" = "State")) %>% 
+        mutate(fill_color = `People Per Hospital` / 1e3)
+      create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
     }
+    
   })
   
   # Create reactive value for selected (clicked) state
@@ -94,7 +101,6 @@ server <- function(input, output, session) {
     click_loc <- input$plot_click
     state_name <- map.where("state", click_loc$x, click_loc$y)
     state_name <- gsub(":.*", "", state_name) # remove any characters after and including ":"
-    print(state_name)
     selected_state$state <- state_name
   })
   
@@ -110,7 +116,20 @@ server <- function(input, output, session) {
   # Render education spending data table
   output$state_data <- renderDataTable({
     if (!is.null(selected_state$state)) {
-      education_spending %>% filter(State == selected_state$state)
+      
+      if (input$map_var == "Education Spending") {
+        education_spending_ppcs %>% 
+          filter(State == selected_state$state) %>%
+          mutate(State = str_to_title(State)) %>% 
+          mutate(PPCS = comma(PPCS))
+        
+      } else if (input$map_var == "# Citizens Per Hospital") {
+        hospitals %>% 
+          filter(State == selected_state$state) %>%
+          mutate(State = str_to_title(State)) %>% 
+          mutate(PPCS = comma(`People Per Hospital`))
+      } 
+        
     } else {
       NULL
     }
@@ -118,13 +137,11 @@ server <- function(input, output, session) {
   
   # Create input for selecting map color
   output$map_var_input <- renderUI({
-    selectInput("map_var", "Select a variable:", choices = c("Education Revenue/Spending"))
+    selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital"))
   })
   
 }
 
 # Run the app
 shinyApp(ui = ui, server = server)
-
 ```
-
