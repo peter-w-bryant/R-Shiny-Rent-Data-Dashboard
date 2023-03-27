@@ -9,11 +9,11 @@ df$month <- as.Date(paste0(df$month, "01"), format = "%Y%m%d")
 data=df%>%group_by(state)%>%filter(state=="Iowa")
 data
 
-ggplot(data, aes(x = median_days_on_market, y = median_listing_price)) +
+ggplot(data, aes(x = month, y = median_days_on_market)) +
   geom_line() +
-  #scale_x_date(breaks = "1 year", date_labels = "%Y") +
-  #facet_wrap(~state) +
-  labs(x = "median_days_on_market", y = "median_listing_price") +
+  scale_x_date(breaks = "1 year", date_labels = "%Y") +
+  facet_wrap(~state) +
+  labs(x = "Year", y = "median_days_on_market") +
   ggtitle("Seasonal Plot of Median listing Price")+
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
 ```

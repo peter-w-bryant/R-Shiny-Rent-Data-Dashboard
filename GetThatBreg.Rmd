@@ -1,0 +1,34 @@
+---
+title: "BREG_busywork"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+data<- read.csv("https://uwmadison.box.com/shared/static/7xd0ftu3pz5ypg1cicm9oy7hqqzx4gsi.csv")
+data<- slice(data, 1:(nrows(data) - 1))
+```
+
+```{r}
+data$date <- as.Date(paste0(data$month_date_yyyymm, "01"), format = "%Y%m%d")
+data$year <- format(data$date, "%Y")
+ggplot(data, aes(x = date, y = median_listing_price, group = state, color = state)) +
+  geom_line() +
+  labs(title = "Median Home Prices Over Time by State",
+       x = "Year",
+       y = "Median Home Price")+
+  theme(legend.position = "none")
+
+```
+
+```{r}
+ggplot(data, aes(x = reorder(state, median_days_on_market), y = median_days_on_market, fill = state)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  labs(title = "Median Days on Market by State", x = "State", y = "Median Days on Market") +
+  coord_flip() +
+  theme_minimal() +
+  guides(fill = "none") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.text.y = element_text(size = 7),
+        axis.title.x = element_text(size = 14))
+```
