@@ -1,0 +1,11 @@
+name: shiny
+title:
+username:
+account: peterbryant
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8687146
+bundleId: 7014598
+url: https://peterbryant.shinyapps.io/shiny/
+when: 1679939119.98777
+lastSyncTime: 1679939119.98779
