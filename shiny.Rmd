@@ -100,7 +100,7 @@ create_median_days_plot <- function(data){
     scale_x_date(breaks = "1 year", date_labels = "%Y%M") +
     facet_wrap(~State) +
     labs(x = "Year", y = "median_days_on_market") +
-    ggtitle("Seasonal Plot of Median listing Price")+
+    ggtitle("Seasonal Plot of Median Days on the Market")+
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
 }
 ```
@@ -118,7 +118,7 @@ ui <- fluidPage(
     br(),
     tags$div(
         style = "width: 75%;",
-        p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot on the right maps your variable of interest on a US map, and if you click on a state a table will be displayed on the left. For a selected state, the last two variables will display a time series and a line plot below the heat map.")
+        p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot on the left maps your variable of interest on a US map, and if you click on a state a table will be displayed below. The median house prices and median days on the market will also display time series plots to the right.")
       ),
     hr(),
     verbatimTextOutput("selected_state"),
