@@ -10,6 +10,8 @@ library(scales)
 library(tsibble)
 library(dplyr)
 library(shinythemes)
+library(DT)
+library(plotly)
 ```
 
 ```{r, message=FALSE}
@@ -66,6 +68,7 @@ median_listing_days <- realty_data %>%
 
 
 ```{r}
+# Old
 # Function for creating map plot
 create_map_plot <- function(map_data, fill_var, title, low_is_good) {
   print(map_data)
@@ -78,16 +81,19 @@ create_map_plot <- function(map_data, fill_var, title, low_is_good) {
       guide = guide_colorbar(
         title = title,
         ticks = FALSE,
-        barwidth = 3          
+        barwidth = 3,
+        title.theme = element_text(color = "white")
       )
     ) +
     coord_map() +
     theme_void() +
     theme(panel.background = element_rect(fill = "#272B30", colour = NA),
            plot.background = element_rect(fill = "#272B30", colour = NA),
+           legend.text = element_text(color = "white")
       )
 }
 ```
+
 
 ```{r}
 create_median_price_plot <- function(data){
@@ -116,14 +122,13 @@ create_median_days_plot <- function(data){
 ```
 
 ```{r}
-
 # Define UI
 ui <- fluidPage(
   theme = shinytheme("slate"),
   h3("Badger Real Estate Group Investment Dashboard"),
   
   sidebarPanel(
-    p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot on the left maps your variable of interest on a US map, and if you click on a state a table will be displayed below. The median house prices and median days on the market will also display time series plots to the right."
+    p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot on the right maps your variable of interest on a US map, and if you click on a state a table will be displayed below. The median house prices and median days on the market will also display time series plots to the right."
     ),
     uiOutput("selected_state_header"), # Display selected state in header
     uiOutput("map_var_input"),
@@ -134,7 +139,7 @@ ui <- fluidPage(
     plotOutput("us_map", click = "plot_click", width = "850px", height = "750px"),
 
     conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "500px", height = "300px")),
-    conditionalPanel(condition = "input.map_var != 'Median Days on the Market'", plotOutput("median_price_plot", width = "500px", height = "300px")),
+    conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "500px", height = "300px")),
 
     dataTableOutput("state_data")
   )
@@ -143,44 +148,38 @@ ui <- fluidPage(
 # Define server
 server <- function(input, output, session) {
   
+  # Observe event states the selected state to NULL whent the variable select input is change
+  observeEvent(input$map_var, {
+    selected_state$state <- NULL
+  })
+  
   observeEvent(input$clear_selection_button, {
     selected_state$state <- NULL
     updateSelectInput(session, "plot_click", selected = NULL)
   })
   
-  # TODO: Convert to: `aes_string` or `.data[[]]`, as discussed during lecture
-  # Create US map
-  output$us_map <- renderPlot({
-    # If the "Education Spending" option is selected, color the states based on the Total column
-    if (input$map_var == "Education Spending") {
-      map_data <- map_data("state", exact = FALSE) %>%
-        left_join(education_spending_ppcs, by = c("region" = "State")) %>% 
-        mutate(fill_color = PPCS / 1e3)
-      create_map_plot(map_data, "fill_color", "Total (thousands)", FALSE)
-    } 
-    else if (input$map_var == "# Citizens Per Hospital") {
-      map_data <- map_data("state", exact = FALSE) %>%
-        left_join(hospitals, by = c("region" = "State")) %>% 
-        mutate(fill_color = `People Per Hospital` / 1e3)
-      create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
-    }
-    else if (input$map_var == "Median Home Prices"){
-      map_data <- map_data("state", exact = FALSE) %>%
-        # left_join(realty_data, by = c("region" = "State")) %>%
-        left_join(median_listing_price, by = c("region" = "State")) %>% 
-        mutate(fill_color = median_listing_price / 1e3)
-      create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
-    } else if (input$map_var == "Median Days on the Market"){
-       map_data <- map_data("state", exact = FALSE) %>%
-        left_join(median_listing_days, by = c("region" = "State")) %>% 
-        mutate(fill_color = median_days_on_market)
-      create_map_plot(map_data, "fill_color", "Median Listing Days", TRUE)
-    }
-    
-  })
-  
   # Create reactive value for selected (clicked) state
   selected_state <- reactiveValues(state = NULL)
+  
+  selected_data <- reactive({
+    if (!is.null(selected_state$state)) {
+      data_info <- data_lookup[[input$map_var]]
+      data_info$join_data %>%
+        filter(State == selected_state$state) %>%
+        select(data_info$var)
+    } else {
+      NULL
+    }
+  })
+  observe({
+    if (!is.null(selected_state$state) && !is.null(selected_data())) {
+      showModal(modalDialog(
+        title = paste(input$map_var, "for", str_to_title(selected_state$state)),
+        paste(selected_data()[[1]]),
+        easyClose = TRUE
+      ))
+    }
+  })
   
   # Update selected state when user clicks on map by x and y coordinates
   observeEvent(input$plot_click, {
@@ -199,36 +198,26 @@ server <- function(input, output, session) {
     }
   })
   
-  # Render education spending data table
-  output$state_data <- renderDataTable({
-    if (!is.null(selected_state$state)) {
-      if (input$map_var == "Education Spending") {
-        education_spending_ppcs %>% 
-          filter(State == selected_state$state) %>%
-          mutate(State = str_to_title(State)) %>% 
-          mutate(PPCS = comma(PPCS))
-        
-      } else if (input$map_var == "# Citizens Per Hospital") {
-        hospitals %>% 
-          filter(State == selected_state$state) %>%
-          mutate(State = str_to_title(State)) %>% 
-          mutate(PPCS = comma(`People Per Hospital`))
-      } else if (input$map_var == "Median Home Prices"){
-        realty_data %>%
-          filter(State == selected_state$state) %>% 
-          mutate(State = str_to_title(State)) %>%
-          mutate(month_date_yyyymm = format(as.Date(paste0(month_date_yyyymm, "01"), format = "%Y%m%d"), "%B %Y")) %>% 
-          select(`month_date_yyyymm`,`median_listing_price`, `median_listing_price_per_square_foot`, `median_listing_price_mm`, `median_listing_price_yy`)
-      } else if (input$map_var == "Median Days on the Market"){
-        realty_data %>%
-          filter(State == selected_state$state) %>% 
-          mutate(State = str_to_title(State)) %>%
-          mutate(month_date_yyyymm = format(as.Date(paste0(month_date_yyyymm, "01"), format = "%Y%m%d"), "%B %Y")) %>% 
-          select(`month_date_yyyymm`,`median_days_on_market`, `median_days_on_market_mm`, `median_days_on_market_yy`)
-      }
-        
+  # Define a lookup table that maps input values to data sets and column names
+  data_lookup <- list(
+    "Education Spending" = list(data = education_spending_ppcs, var = "PPCS", join_data = education_spending_ppcs),
+    "# Citizens Per Hospital" = list(data = hospitals, var = "People Per Hospital", join_data = hospitals),
+    "Median Home Prices" = list(data = realty_data, var = "median_listing_price", join_data = median_listing_price),
+    "Median Days on the Market" = list(data = realty_data, var = "median_days_on_market", join_data = median_listing_days)
+  )
+  
+  # Create US map
+  output$us_map <- renderPlot({
+    data_info <- data_lookup[[input$map_var]]
+    
+    map_data <- map_data("state", exact = FALSE) %>%
+      left_join(data_info$join_data, by = c("region" = "State")) %>%
+      mutate(fill_color = !!sym(data_info$var) / 1e3, region = tolower(region))
+    
+    if (input$map_var %in% c("Education Spending", "# Citizens Per Hospital", "Median Home Prices")) {
+      create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
     } else {
-      NULL
+      create_map_plot(map_data, "fill_color", "Median Listing Days", TRUE)
     }
   })
   
@@ -242,31 +231,29 @@ server <- function(input, output, session) {
           filter(State == selected_state$state)
       }
       create_median_price_plot(filtered_data)
-    }else{
-      NULL
-    }
+    } else {
+        NULL
+      }
   })
-  
+    
   output$median_days_plot <- renderPlot({
     if (input$map_var == "Median Days on the Market") {
       if (!is.null(selected_state$state)) {
         # filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
-
         filtered_data <- realty_data %>%
           group_by(State) %>% 
           filter(State == selected_state$state)
-          
         filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
         create_median_days_plot(filtered_data)
       } else {
-       NULL 
+        NULL 
       }
-      
+        
     }else{
-      NULL
-    }
+        NULL
+      }
   })
-  
+    
   # Create input for selecting map color
   output$map_var_input <- renderUI({
     selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital", "Median Home Prices", "Median Days on the Market"))
