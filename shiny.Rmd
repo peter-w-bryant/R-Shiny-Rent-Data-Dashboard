@@ -122,25 +122,32 @@ create_median_days_plot <- function(data){
 
 ```{r}
 # Define UI
-ui <- fluidPage(
+ui <- navbarPage(
   theme = shinytheme("slate"),
-  h3("Badger Real Estate Group Investment Dashboard"),
+  "Badger Real Estate Group Investment Dashboard",
   
-  sidebarPanel(
-    p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot on the right maps your variable of interest on a US map, and if you click on a state a table will be displayed below. The median house prices and median days on the market will also display time series plots to the right."
+  tabPanel(
+    "Main",
+    mainPanel(
+      p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+      ),
+      uiOutput("selected_state_header"), # Display selected state in header
+      uiOutput("map_var_input"),
+      actionButton("clear_selection_button", "Clear Selection")
     ),
-    uiOutput("selected_state_header"), # Display selected state in header
-    uiOutput("map_var_input"),
-    actionButton("clear_selection_button", "Clear Selection"),
-    ),
 
-  mainPanel(
-    plotOutput("us_map", click = "plot_click", width = "850px", height = "750px"),
-
-    conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "500px", height = "300px")),
-    conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "500px", height = "300px")),
-
-    dataTableOutput("state_data")
+    fluidRow(
+      column(width = 8,
+             plotOutput("us_map", click = "plot_click", width = "100%", height = "750px")
+      ),
+      column(width = 4,
+             div(
+               style = "text-align: center;",
+               conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "100%", height = "300px")),
+               conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "100%", height = "300px"))
+             )
+      )
+    )
   )
 )
 
