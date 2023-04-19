@@ -132,13 +132,15 @@ ui <- navbarPage(
       p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
       ),
       uiOutput("selected_state_header"), # Display selected state in header
+      textOutput("selected_state_data"), # Display selected state data
+      br(),
       uiOutput("map_var_input"),
       actionButton("clear_selection_button", "Clear Selection")
     ),
 
     fluidRow(
       column(width = 8,
-             plotOutput("us_map", click = "plot_click", width = "100%", height = "200px")
+             plotOutput("us_map", click = "plot_click", width = "100%", height = "400px")
       ),
       column(width = 4,
              div(
@@ -162,17 +164,19 @@ server <- function(input, output, session) {
     "Median Days on the Market" = list(data = realty_data, var = "median_days_on_market", join_data = median_listing_days)
   )
   
-  # reactive value to store the selected (clicked) state
-  selected_state <- reactiveValues(state = NULL)
+  # reactive value to store the selected (clicked) state and its data
+  selected_state <- reactiveValues(state = NULL, data = NULL)
   
   # observe event sets the selected state to NULL when the variable select input is changed
   observeEvent(input$map_var, {
     selected_state$state <- NULL
+    selected_state$data <- NULL
   })
   
   # observe event sets the selected state to NULL when the "Clear Selection" button is pressed
   observeEvent(input$clear_selection_button, {
     selected_state$state <- NULL
+    selected_state$data <- NULL
     updateSelectInput(session, "plot_click", selected = NULL)
   })
   
@@ -182,35 +186,21 @@ server <- function(input, output, session) {
     state_name <- map.where("state", click_loc$x, click_loc$y)
     state_name <- gsub(":.*", "", state_name) # remove any characters after and including ":"
     selected_state$state <- state_name
-  })
-  
-  # reactive expression that grabs the variable data from the look up table according to the value of the selected state
-  selected_data <- reactive({
+    
     if (!is.null(selected_state$state)) {
       data_info <- data_lookup[[input$map_var]]
       data_info$join_data %>%
         filter(State == selected_state$state) %>%
-        select(data_info$var)
-    } else {
-      NULL
-    }
-  })
-  
-  # corresponding observe event that watches for a selected state and renders a pop-up dialog with the variable data for the selected state
-  observe({
-    if (!is.null(selected_state$state) && !is.null(selected_data())) {
-      showModal(modalDialog(
-        title = paste(input$map_var, "for", str_to_title(selected_state$state)),
-        paste(selected_data()[[1]]),
-        easyClose = TRUE
-      ))
+        select(data_info$var) %>%
+        pull() %>%
+        as.character() -> selected_state$data
     }
   })
   
   # renderUI context to update the selected state in the sidebar panel
   output$selected_state_header <- renderUI({
     if (!is.null(selected_state$state)) {
-      tags$h3("Selected State: ",str_to_title(selected_state$state))
+      tags$h3("Selected State: ",str_to_title(selected_state$state), br())
     } else {
       tags$h4("Please click on a state.")
     }
@@ -269,8 +259,25 @@ server <- function(input, output, session) {
     selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital", "Median Home Prices", "Median Days on the Market"))
   })
   
+  # renderText context to display selected state data
+  output$selected_state_data <- renderText({
+    if (!is.null(selected_state$data)) {
+      data_info <- data_lookup[[input$map_var]]
+      column_name <- data_info$var
+      pretty_value <- prettyNum(round(as.integer(selected_state$data)), big.mark = ",")
+      if (column_name == "PPCS") {
+        pretty_column_name <- column_name
+      } else {
+        pretty_column_name <- gsub("_", " ", column_name)
+        pretty_column_name <- str_to_title(pretty_column_name)
+      }
+      paste(pretty_column_name, ": ", pretty_value)
+    }
+  })
+
 }
 
 # Run the app
 shinyApp(ui = ui, server = server)
+
 ```
