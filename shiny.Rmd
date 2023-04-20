@@ -10,8 +10,8 @@ library(scales)
 library(tsibble)
 library(dplyr)
 library(shinythemes)
+library(plotly) 
 #library(DT)
-#library(plotly)
 ```
 
 ```{r, message=FALSE}
@@ -124,8 +124,6 @@ create_median_days_plot <- function(data){
 ```
 
 ```{r}
-library(plotly) # Add this to the top of your script
-
 create_bar_plot <- function(data, var, var_name) {
   top_10 <- data %>%
     top_n(10, !!sym(var)) %>% # select top 10 values of var
@@ -148,8 +146,6 @@ create_bar_plot <- function(data, var, var_name) {
     layout(plot_bgcolor = 'rgba(0,0,0,0)', 
            paper_bgcolor = 'rgba(0,0,0,0)')
 }
-
-
 
 ```
 
@@ -343,7 +339,6 @@ server <- function(input, output, session) {
       }
   })
   
-  # renderPlot context to render the state bar plot
   # renderPlotly context to render the state bar plot
   output$state_bar_plot <- renderPlotly({
     if (input$map_var != "Weighted Sum") {
@@ -358,9 +353,6 @@ server <- function(input, output, session) {
       NULL
     }
   })
-
-
-
 
   # renderPlot context to render "Median Days on the Market" seasonal plot
   output$median_days_plot <- renderPlot({
