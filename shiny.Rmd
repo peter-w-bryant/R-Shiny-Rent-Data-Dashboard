@@ -108,6 +108,9 @@ create_median_price_plot <- function(data){
 }
 ```
 
+
+
+
 ```{r}
 create_median_days_plot <- function(data){
   ggplot(data, aes(x = month, y = median_days_on_market)) +
@@ -121,11 +124,40 @@ create_median_days_plot <- function(data){
 ```
 
 ```{r}
+library(plotly) # Add this to the top of your script
+
+create_bar_plot <- function(data, var, var_name) {
+  top_10 <- data %>%
+    top_n(10, !!sym(var)) %>% # select top 10 values of var
+    arrange(desc(!!sym(var)))  # sort in descending order by var
+
+  p <- ggplot(top_10, aes(x = State, y = !!sym(var), fill = State)) +
+    geom_bar(stat = "identity", show.legend = FALSE) +
+    scale_y_continuous(limits = c(0, max(top_10[[var]], na.rm = TRUE) * 1.1), expand = c(0, 0)) +
+    coord_flip() + # Flip the x and y axis
+    scale_x_discrete(limits = top_10$State[order(top_10[[var]])]) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_text(size = 10),
+          axis.text.x = element_text(color = "white"),
+          axis.text.y = element_text(color = "white"),
+          plot.title = element_text(color = "white")) +
+    labs(title = paste("Top 10 States by", var_name), x = "State", y = var_name) +
+    scale_fill_brewer(palette = "Set3")
+
+  ggplotly(p, tooltip = c("y")) %>%
+    layout(plot_bgcolor = 'rgba(0,0,0,0)', 
+           paper_bgcolor = 'rgba(0,0,0,0)')
+}
+
+
+
+```
+
+```{r}
 # Define UI
 ui <- navbarPage(
   theme = shinytheme("slate"),
   "Badger Real Estate Group Investment Dashboard",
-  
   tabPanel(
     "Main",
     mainPanel(
@@ -135,6 +167,27 @@ ui <- navbarPage(
       textOutput("selected_state_data"), # Display selected state data
       br(),
       uiOutput("map_var_input"),
+      # conditional weighted sum sliders
+      conditionalPanel(
+        condition = "input.map_var == 'Weighted Sum'",
+          fluidRow(
+            column(
+              width = 12,
+              div(style = "display:inline-block; width:22%; margin-right:2%",
+                  sliderInput("education_spending_weight", "Education Spending Weight:", min = 0, max = 1, step = 0.01, value = 0.25)
+              ),
+              div(style = "display:inline-block; width:22%; margin-right:2%",
+                  sliderInput("citizens_per_hospital_weight", "# Citizens Per Hospital Weight:", min = 0, max = 1, step = 0.01, value = 0.25)
+              ),
+              div(style = "display:inline-block; width:22%; margin-right:2%",
+                  sliderInput("median_home_prices_weight", "Median Home Prices Weight:", min = 0, max = 1, step = 0.01, value = 0.25)
+              ),
+              div(style = "display:inline-block; width:22%;",
+                  sliderInput("median_listing_days_weight", "Median Listing Days Weight:", min = 0, max = 1, step = 0.01, value = 0.25)
+              )
+            )
+          )
+      ),
       actionButton("clear_selection_button", "Clear Selection")
     ),
 
@@ -145,10 +198,13 @@ ui <- navbarPage(
       column(width = 4,
              div(
                style = "text-align: center;",
-               conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "100%", height = "300px")),
-               conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "100%", height = "300px"))
+               conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "100%", height = "300px")), #  && !is.null(selected_state$state)
+               conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "100%", height = "300px")),
              )
       )
+    ),
+    fluidRow(
+      plotlyOutput("state_bar_plot", height = "100%", width = "80%")
     )
   )
 )
@@ -156,14 +212,57 @@ ui <- navbarPage(
 # Define server
 server <- function(input, output, session) {
   
+  # reactive expression initializing weighted sum of all features per state data 
+  weighted_sum_data <- reactive({
+    education_weighted_data <- education_spending_ppcs %>%
+      mutate(education_weighted = as.integer(PPCS) * input$education_spending_weight) %>% 
+      select(`State`, education_weighted)
+    
+    hospital_weighted_data <- hospitals %>%
+      mutate(hospital_weighted = as.integer(`People Per Hospital`) * input$citizens_per_hospital_weight) %>% 
+      select(`State`, hospital_weighted)
+
+    median_home_prices_weighted_data <- median_listing_price %>%
+      mutate(median_home_prices_weighted = as.integer(median_listing_price) * input$median_home_prices_weight) %>% 
+      select(`State`, median_home_prices_weighted)
+    
+    median_listing_days_weighted_data <- median_listing_days %>%
+      mutate(median_listing_days_weighted = as.integer(median_days_on_market) * input$median_listing_days_weight) %>% 
+      select(`State`, median_listing_days_weighted)
+    
+    #View(education_weighted_data)
+    
+    weighted_sum_data <- education_weighted_data %>%
+      filter(`State` != "district of columbia") %>% 
+      left_join(hospital_weighted_data, by = "State") %>% 
+      left_join(median_home_prices_weighted_data, by = "State") %>%
+      left_join(median_listing_days_weighted_data, by = "State")
+    
+    View(weighted_sum_data)
+  
+    weighted_sum_data <- weighted_sum_data %>%
+      mutate(weighted_sum = education_weighted + hospital_weighted + median_home_prices_weighted + median_listing_days_weighted)
+    
+    View(weighted_sum_data)
+    normalized_weighted_data <- weighted_sum_data %>%
+      mutate(total_normalized_weight = (weighted_sum - min(weighted_sum)) / (max(weighted_sum) - min(weighted_sum))) %>% 
+      select(`State`, total_normalized_weight)
+
+    
+    View(normalized_weighted_data)
+    normalized_weighted_data
+  })
+  
   # look up table that maps input values to data sets and column names
   data_lookup <- list(
     "Education Spending" = list(data = education_spending_ppcs, var = "PPCS", join_data = education_spending_ppcs),
     "# Citizens Per Hospital" = list(data = hospitals, var = "People Per Hospital", join_data = hospitals),
     "Median Home Prices" = list(data = realty_data, var = "median_listing_price", join_data = median_listing_price),
-    "Median Days on the Market" = list(data = realty_data, var = "median_days_on_market", join_data = median_listing_days)
-  )
+    "Median Days on the Market" = list(data = realty_data, var = "median_days_on_market", join_data = median_listing_days))
   
+  # update the data_lookup list
+  data_lookup[["Weighted Sum"]] <- list(data = NULL, var = "weighted_sum", join_data = weighted_sum_data)
+
   # reactive value to store the selected (clicked) state and its data
   selected_state <- reactiveValues(state = NULL, data = NULL)
   
@@ -208,19 +307,27 @@ server <- function(input, output, session) {
   
   # renderPlot context to render the map plot for each select input variable using the look up table
   output$us_map <- renderPlot({
-    data_info <- data_lookup[[input$map_var]]
-    
-    map_data <- map_data("state", exact = FALSE) %>%
-      left_join(data_info$join_data, by = c("region" = "State")) %>%
-      mutate(fill_color = !!sym(data_info$var) / 1e3, region = tolower(region))
-    
-    if (input$map_var %in% c("Education Spending", "# Citizens Per Hospital", "Median Home Prices")) {
-      create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
+    if (input$map_var == "Weighted Sum") {
+      weighted_data <- weighted_sum_data()
+      join_data <- map_data("state", exact = FALSE) %>%
+        left_join(weighted_data, by = c("region" = "State")) %>%
+        mutate(fill_color = total_normalized_weight, region = tolower(region))
+      create_map_plot(join_data, "fill_color", "Weighted Sum (Normalized)", FALSE)
     } else {
-      create_map_plot(map_data, "fill_color", "Median Listing Days", TRUE)
+      data_info <- data_lookup[[input$map_var]]
+      
+      map_data <- map_data("state", exact = FALSE) %>%
+        left_join(data_info$join_data, by = c("region" = "State")) %>%
+        mutate(fill_color = !!sym(data_info$var) / 1e3, region = tolower(region))
+      
+      if (input$map_var %in% c("Education Spending", "# Citizens Per Hospital", "Median Home Prices")) {
+        create_map_plot(map_data, "fill_color", "Total (thousands)", TRUE)
+      } else {
+        create_map_plot(map_data, "fill_color", "Median Listing Days", TRUE)
+      }
     }
-  },bg="transparent")
-  
+  }, bg="transparent")
+    
   # renderPlot context to render "Median House Prices Over Time" time series plot
   output$median_price_plot <- renderPlot({
     if (input$map_var == "Median Home Prices") {
@@ -236,6 +343,25 @@ server <- function(input, output, session) {
       }
   })
   
+  # renderPlot context to render the state bar plot
+  # renderPlotly context to render the state bar plot
+  output$state_bar_plot <- renderPlotly({
+    if (input$map_var != "Weighted Sum") {
+      data_info <- data_lookup[[input$map_var]]
+      data <- data_info$join_data %>%
+        select(State, !!sym(data_info$var)) %>%
+        arrange(desc(!!sym(data_info$var))) %>% # Sort data in descending order
+        mutate(State = fct_reorder(State, !!sym(data_info$var), .desc = TRUE)) # Reorder states in descending order
+  
+      create_bar_plot(data, data_info$var, input$map_var)
+    } else {
+      NULL
+    }
+  })
+
+
+
+
   # renderPlot context to render "Median Days on the Market" seasonal plot
   output$median_days_plot <- renderPlot({
     if (input$map_var == "Median Days on the Market") {
@@ -256,7 +382,7 @@ server <- function(input, output, session) {
     
   # renderUI context for the "Select a variable" selectInput
   output$map_var_input <- renderUI({
-    selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital", "Median Home Prices", "Median Days on the Market"))
+    selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital", "Median Home Prices", "Median Days on the Market", "Weighted Sum"))
   })
   
   # renderText context to display selected state data
