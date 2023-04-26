@@ -26,9 +26,10 @@ hospitals <- read_csv("https://uwmadison.box.com/shared/static/pywujigfcjq83ka27
   mutate(`People Per Hospital` = `Population` / `Number Hospitals`) %>% # create new people per hospital col
   mutate(State = tolower(State)) %>%  # make the state name lower case
   drop_na() %>%  #remove missing values
-  select(`State`, `People Per Hospital`, `Number Hospitals`, `Staffed Beds`, `Total Discharges`) # change ordering
+  select(`State`, `People Per Hospital`, `Number Hospitals`, `Staffed Beds`, `Total Discharges`) %>% # change ordering
+  filter(`State` != "hawaii" & `State` != "alaska") 
   
-# head(hospitals)
+hospitals
 ```
 
 ```{r}
@@ -38,8 +39,9 @@ education_spending_ppcs <- read_csv("https://uwmadison.box.com/shared/static/abt
   select(`State`, `PPCS`) %>% 
   drop_na() %>% 
   mutate(State = gsub("\\.", "", State)) %>%
-  mutate(State = tolower(State))             
-# head(education_spending_ppcs)
+  mutate(State = tolower(State)) %>% 
+  filter(`State` != "hawaii" & `State` != "alaska")
+#education_spending_ppcs
 ```
 
 
@@ -53,7 +55,8 @@ realty_data <- realty_data %>%
   mutate(year = format(realty_data$date, "%Y")) %>% # new
   mutate(format(realty_data$date, "%Y")) %>%
   rename(State= state) %>% 
-  mutate(State = tolower(State)) 
+  mutate(State = tolower(State)) %>% 
+  filter(`State` != "hawaii" & `State` != "alaska")
 
 median_listing_price <- realty_data %>% 
   filter(month_date_yyyymm == 202301) %>% 
@@ -123,11 +126,11 @@ create_median_price_plot <- function(data){
 
 ```{r}
 create_median_days_plot <- function(data){
-  print(data$median_days_on_market)
-  median_day_color = tail(data$median_days_on_market, 1)
-  #print("Flag:", median_day_color)
-  ggplot(data, aes(x = month, y = median_days_on_market)) +
-    geom_line(color = median_day_color, size = 1.5, alpha = 0.7) +
+  #print(data$median_days_on_market)
+  
+  ggplot(data, aes(x = month, y = median_days_on_market, color = median_days_on_market)) +
+    geom_line(size = 1.5, alpha = 0.7) +
+    scale_color_gradientn(colors = color_scale) +
     scale_x_date(breaks = "1 year", date_labels = "%Y%M") +
     facet_wrap(~State) +
     labs(x = "Year", y = "Median Days on Market") +
@@ -142,41 +145,41 @@ create_median_days_plot <- function(data){
           text = element_text(color = "snow"),
           axis.text = element_text(color = "snow3", size = 10),
           axis.title = element_text(size = 14),
-          strip.background =element_rect(fill=median_day_color),
-          strip.text = element_text(colour = '#272B30')) 
+          strip.background =element_rect(fill="#272B30"),
+          strip.text = element_text(colour = "snow")) 
 }
 
 
-filtered_data <- realty_data %>%
-  group_by(State) %>% 
-  filter(State == "wisconsin")
-filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
-create_median_days_plot(filtered_data)
+
+# filtered_data <- realty_data %>%
+#   group_by(State) %>% 
+#   filter(State == "wisconsin")
+# filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
+# create_median_days_plot(filtered_data)
 ```
 
 ```{r}
 create_bar_plot <- function(data, var, var_name) {
-  top_10 <- data %>%
-    top_n(10, !!sym(var)) %>% # select top 10 values of var
-    arrange(desc(!!sym(var)))  # sort in descending order by var
-
-  p <- ggplot(top_10, aes(x = State, y = !!sym(var), fill = State)) +
-    geom_bar(stat = "identity", show.legend = FALSE) +
-    scale_y_continuous(limits = c(0, max(top_10[[var]], na.rm = TRUE) * 1.1), expand = c(0, 0)) +
+  p <- ggplot(data, aes(x = State, y = !!sym(var), fill = !!sym(var))) +
+    geom_bar(stat = "identity", width = 0.8, show.legend = FALSE) + # adjust width to add space between bars
+    scale_y_continuous(limits = c(0, max(data[[var]], na.rm = TRUE) * 1.1), expand = c(0, 0)) +
     coord_flip() + # Flip the x and y axis
-    scale_x_discrete(limits = top_10$State[order(top_10[[var]])]) +
+    scale_x_discrete(limits = data$State[order(data[[var]])]) +
     theme(axis.title.x = element_blank(),
-          axis.title.y = element_text(size = 10),
-          axis.text.x = element_text(color = "white"),
-          axis.text.y = element_text(color = "white"),
-          plot.title = element_text(color = "white")) +
+          axis.title.y = element_text(size = 14), # increase text size
+          axis.text = element_text(color = "white", size = 10),
+          axis.title = element_text(color = "white", size = 14),
+          axis.text.x = element_text(color = "white", size = 12), # increase text size
+          axis.text.y = element_text(color = "white", size = 12), # increase text size
+          plot.title = element_text(color = "white", size = 20)) + # increase text size
     labs(title = paste("Top 10 States by", var_name), x = "State", y = var_name) +
-    scale_fill_brewer(palette = "Set3")
+    scale_fill_gradientn(colors = color_scale)
 
   ggplotly(p, tooltip = c("y")) %>%
     layout(plot_bgcolor = 'rgba(0,0,0,0)', 
            paper_bgcolor = 'rgba(0,0,0,0)')
 }
+
 
 ```
 
@@ -225,13 +228,13 @@ ui <- navbarPage(
       column(width = 4,
              div(
                style = "text-align: center;",
-               conditionalPanel(condition = "input.map_var == 'Median Days on the Market'", plotOutput("median_days_plot", width = "100%", height = "300px")), #  && !is.null(selected_state$state)
+               conditionalPanel(condition = "input.map_var == 'Median Days on the Market' && $('#selected_state_header').text() !== 'Please click on a state.'", plotOutput("median_days_plot", width = "100%", height = "300px")), #  && !is.null(selected_state$state)
                conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "100%", height = "300px")),
              )
       )
     ),
     fluidRow(
-      plotlyOutput("state_bar_plot", height = "100%", width = "80%")
+      plotlyOutput("state_bar_plot", height = "800px", width = "90%")
     )
   )
 )
