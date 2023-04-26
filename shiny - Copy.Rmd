@@ -70,15 +70,14 @@ median_listing_days
 
 
 ```{r}
-color_scale <- c("#4575B4", "#91BFDB", "#E0F3F8", "#FEE090", "#FC8D59")
-
 # Function for creating map plot
 create_map_plot <- function(map_data, fill_var, title, low_is_good = TRUE) {
   par(mar = c(0, 0, 0, 0))
   ggplot(data=map_data, aes(x = long, y = lat, group = group, fill = !!sym(fill_var))) +
     geom_polygon(color = "black") +
     scale_fill_gradientn(
-      colors = if (low_is_good) color_scale else rev(color_scale),
+      colors = if (low_is_good) c("#4575B4", "#91BFDB", "#E0F3F8", "#FEE090", "#FC8D59")
+                else c("#FC8D59", "#FEE090", "#E0F3F8", "#91BFDB", "#4575B4"),
       guide = guide_colorbar(
         title = title,
         ticks = FALSE,
@@ -94,17 +93,16 @@ create_map_plot <- function(map_data, fill_var, title, low_is_good = TRUE) {
       )
 }
 
+
 ```
 
 
 ```{r}
-# Function for creating median price plot
 create_median_price_plot <- function(data){
   data = data %>% 
     filter(is.finite(median_listing_price))
-  ggplot(data, aes(x = date, y = median_listing_price, group = State, color = median_listing_price)) +
+  ggplot(data, aes(x = date, y = median_listing_price, group = State, color = State)) +
   geom_line(size = 1.2, alpha = 0.7) + 
-  scale_color_gradientn(colors = color_scale) +
   scale_y_continuous(breaks = seq(0, max(data$median_listing_price) + 5e4, by = 5e4)) +
   labs(title = "Median Home Prices Over Time by State",
        x = "Year",
@@ -385,48 +383,52 @@ server <- function(input, output, session) {
     }
   })
 
-  # renderPlot context to render "Median Days on the Market" seasonal plot
+  # renderPlot context to render "Seasonal Plot of Median Days on the Market" plot
   output$median_days_plot <- renderPlot({
     if (input$map_var == "Median Days on the Market") {
-      if (!is.null(selected_state$state)) {
+      if (is.null(selected_state$state)) {
+        filtered_data <- realty_data
+      } else {
         filtered_data <- realty_data %>%
-          group_by(State) %>% 
           filter(State == selected_state$state)
-        filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
-        create_median_days_plot(filtered_data)
-      } else {
-        NULL 
       }
-        
-    }else{
-        NULL
-      }
-  })
-    
-  # renderUI context for the "Select a variable" selectInput
-  output$map_var_input <- renderUI({
-    selectInput("map_var", "Select a variable:", choices = c("Education Spending", "# Citizens Per Hospital", "Median Home Prices", "Median Days on the Market", "Weighted Sum"))
-  })
+      filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
+      create_median_days_plot(filtered_data)
+    }
+  }, bg="transparent")
   
-  # renderText context to display selected state data
+  # renderPlotly context to render bar plot for each select input variable using the look up table
+  output$state_bar_plot <- renderPlotly({
+    data_info <- data_lookup[[input$map_var]]
+    
+    if (input$map_var == "Weighted Sum") {
+      join_data <- weighted_sum_data()
+    } else {
+      join_data <- data_info$join_data
+    }
+    
+    create_bar_plot(join_data, data_info$var, input$map_var)
+  })
+
+  # renderText context to display the selected state's data
   output$selected_state_data <- renderText({
-    if (!is.null(selected_state$data)) {
-      data_info <- data_lookup[[input$map_var]]
-      column_name <- data_info$var
-      pretty_value <- prettyNum(round(as.integer(selected_state$data)), big.mark = ",")
-      if (column_name == "PPCS") {
-        pretty_column_name <- column_name
-      } else {
-        pretty_column_name <- gsub("_", " ", column_name)
-        pretty_column_name <- str_to_title(pretty_column_name)
-      }
-      paste(pretty_column_name, ": ", pretty_value)
+    if (!is.null(selected_state$state) && !is.null(selected_state$data)) {
+      paste0("Selected State: ", str_to_title(selected_state$state), "\n", input$map_var, ": ", selected_state$data)
     }
   })
 
+  # renderUI context to update the input drop down menu
+  output$map_var_input <- renderUI({
+    selectInput("map_var", "Choose Variable:",
+                choices = c("Education Spending",
+                            "# Citizens Per Hospital",
+                            "Median Home Prices",
+                            "Median Days on the Market",
+                            "Weighted Sum"),
+                selected = "Education Spending")
+  })
 }
 
 # Run the app
 shinyApp(ui = ui, server = server)
-
 ```
