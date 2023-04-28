@@ -10,8 +10,10 @@ library(scales)
 library(tsibble)
 library(dplyr)
 library(shinythemes)
-library(plotly) 
-#library(DT)
+library(plotly)
+library(leaflet)
+library(sf)
+library(DT)
 ```
 
 ```{r}
@@ -29,7 +31,7 @@ hospitals <- read_csv("https://uwmadison.box.com/shared/static/pywujigfcjq83ka27
   select(`State`, `People Per Hospital`, `Number Hospitals`, `Staffed Beds`, `Total Discharges`) %>% # change ordering
   filter(`State` != "hawaii" & `State` != "alaska") 
   
-hospitals
+#hospitals
 ```
 
 ```{r}
@@ -67,8 +69,32 @@ median_listing_days <- realty_data %>%
   filter(month_date_yyyymm == 202301) %>% 
   select(State, median_days_on_market)
 
-median_listing_days
+#median_listing_days
 # median_listing_days
+```
+
+```{r}
+# Extract 2021 Rental Data
+california_rent_data <- read_csv("https://uwmadison.box.com/shared/static/u9nt6aafkrf1vvcknnkjckwsy7qnrvqo.csv")
+california_rent_data_2021 <-california_rent_data %>% filter(Year == 2021)
+
+california_rent_data = california_rent_data%>% 
+  select(Year, County, `0BR`, `1BR`, `2BR`, `3BR`, `4BR`) %>% 
+  mutate_at(vars(`0BR`: `4BR`), as.numeric)
+
+california <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rma5rzacvul5vbyfekbcnmcty.geojson") %>%
+  dplyr::select(-AdminRegion, -FireMAR, -LawMAR, -State_FIPS_ID, -County_FIPS_ID, -Shape__Area, -Shape__Length) %>% 
+  rename(County = CountyName)
+
+california_df <- as.data.frame(california)
+california_merged <- merge(california_df, california_rent_data_2021, by = "County")
+
+california_rent_data <- left_join(california_rent_data, california %>% dplyr::select(County, OBJECTID),
+                                   by = c("County"))
+
+california <- st_as_sf(california_merged) %>% 
+  mutate(`0BR` = as.numeric(`0BR`))
+head(california)
 ```
 
 
@@ -96,7 +122,6 @@ create_map_plot <- function(map_data, fill_var, title, low_is_good = TRUE) {
            legend.text = element_text(color = "white")
       )
 }
-
 ```
 
 
@@ -148,9 +173,6 @@ create_median_days_plot <- function(data){
           strip.background =element_rect(fill="#272B30"),
           strip.text = element_text(colour = "snow")) 
 }
-
-
-
 # filtered_data <- realty_data %>%
 #   group_by(State) %>% 
 #   filter(State == "wisconsin")
@@ -179,18 +201,82 @@ create_bar_plot <- function(data, var, var_name) {
     layout(plot_bgcolor = 'rgba(0,0,0,0)', 
            paper_bgcolor = 'rgba(0,0,0,0)')
 }
-
-
 ```
 
 ```{r}
-# Define UI
+cali_leaflet_plot <- function(bedrooms) {
+  # Convert the character data to numeric
+  california[[bedrooms]] <- california[[bedrooms]]
+
+  # Create a color palette based on the numeric values
+  color_palette <- colorNumeric(palette = "viridis", domain = california[[bedrooms]])
+
+  map <- leaflet(california) %>%
+    addTiles() %>%
+    addPolygons(
+      fillColor = ~color_palette(california[[bedrooms]]),
+      color = "black",
+      weight = 1,
+      opacity = 1,
+      fillOpacity = 0.5,
+      layerId = ~OBJECTID
+    )
+
+  # Add a legend for the color scale
+  map %>% addLegend(
+    "bottomright",
+    title = bedrooms,
+    pal = color_palette,
+    values = ~as.numeric(california[[bedrooms]]),
+    opacity = 1
+  )
+}
+
+#cali_leaflet_plot("0BR")
+```
+```{r}
+create_bedrooms_line_plot <- function(county, bedrooms) {
+  if (!is.na(county[1])) {
+    county <- county[1]
+  }
+  if (!is.na(county[2])) {
+    county <- county[2]
+  }
+  if (!is.na(county[3])) {
+    county <- county[3]
+  }
+
+  #cat("county:", county)
+  # Subset the data by county and select the bedrooms column
+  county_data <- california_rent_data %>%
+    filter(County == county) %>%
+    select(Year, !!sym(bedrooms))
+  
+  # Create the line plot using ggplot2
+  ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
+    geom_line() +
+    xlab("Year") +
+    ylab(paste0(bedrooms, " Rent")) +
+    ggtitle(paste0("Rent Prices for ", county, " County"))
+}
+
+# Example usage
+#create_bedrooms_line_plot("San Francisco", "2BR")
+```
+
+
+```{r}
 ui <- navbarPage(
   theme = shinytheme("slate"),
-  "Badger Real Estate Group Investment Dashboard",
+  title = "BREG",
+  
+  # U.S. Analysis (Main Visualization) Tab+Page
   tabPanel(
-    "Main",
+    "U.S. Analysis",
     mainPanel(
+      tags$h2("Badger Real Estate Group", 
+        tags$span("Investment Dashboard", style = "color: #BF050C; font-weight: bold;")
+      ),
       p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
       ),
       uiOutput("selected_state_header"), # Display selected state in header
@@ -223,7 +309,7 @@ ui <- navbarPage(
 
     fluidRow(
       column(width = 8,
-             plotOutput("us_map", click = "plot_click", width = "100%", height = "400px")
+             plotOutput("us_map", click = "plot_click", width = "100%", height = "550px")
       ),
       column(width = 4,
              div(
@@ -236,11 +322,80 @@ ui <- navbarPage(
     fluidRow(
       plotlyOutput("state_bar_plot", height = "800px", width = "90%")
     )
+  ), 
+  # California Analysis Tab+Page
+  tabPanel(
+    "California",
+    tags$h2("California", 
+      tags$span("Rental Property Analysis", style = "color: #BF050C; font-weight: bold;")
+    ),
+    p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+      ),
+
+    mainPanel(
+      selectInput("bedrooms", "Select number of bedrooms:",
+        choices = c("0BR", "1BR", "2BR", "3BR", "4BR"),
+        selected = "1BR"),
+     fluidRow(
+      align = "center", # center the row horizontally
+      column(width = 8, leafletOutput("california_map", height = "600px")),
+      column(
+        width = 4,
+        div(DTOutput("county_info"), id = "custom-datatable"),
+          tags$style(HTML("
+            #custom-datatable_wrapper .dataTables_length label,
+            #custom-datatable_wrapper .dataTables_length select,
+            #custom-datatable_wrapper .dataTables_filter label,
+            #custom-datatable_wrapper .dataTables_filter input {
+              color: black !important;
+            }
+            #custom-datatable_wrapper .dataTables_filter input {
+              background-color: #f5f5f5 !important;
+            }
+            #custom-datatable_wrapper .dataTables_length select option {
+              background-color: white !important;
+              color: black !important;
+            }
+            #custom-datatable table.dataTable {
+              background-color: white;
+            }
+            #custom-datatable table.dataTable thead th {
+              color: black;
+            }
+            #custom-datatable table.dataTable tbody tr {
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper div.dataTables_filter input {
+              background-color: #f5f5f5;
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper .dataTables_length label {
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper .dataTables_paginate .paginate_button {
+              background-color: #f5f5f5;
+              color: black;
+            }
+          "))
+      )
+    )
+,
+     plotOutput("bedrooms_line_plot", width = "100%", height = "300px"),
+    )
+  ),
+  
+  # Link to Code + Links to Data
+  tabPanel(
+    "Code/Sources",
+    mainPanel(
+      
+    ),
   )
 )
 
-# Define server
 server <- function(input, output, session) {
+  
+  # U.S. ANALYSIS
   
   # reactive expression initializing weighted sum of all features per state data 
   weighted_sum_data <- reactive({
@@ -426,10 +581,35 @@ server <- function(input, output, session) {
       paste(pretty_column_name, ": ", pretty_value)
     }
   })
+  
+  # CALIFORNIA ANALYSIS
+  output$california_map <- renderLeaflet({cali_leaflet_plot(input$bedrooms)})
+  
+  selected_county <- reactiveVal()
 
+  observeEvent(input$california_map_shape_click, {
+    click_data <- input$california_map_shape_click
+    selected_county(click_data$id)
+  })
+
+  output$county_info <- renderDT({
+    if (is.null(selected_county())) {
+      return(NULL)
+    }
+
+    county_data <- california_rent_data[california_rent_data$OBJECTID == selected_county(), ] %>% 
+      dplyr::select(-OBJECTID, -geometry) %>% 
+      arrange(desc(Year))
+    datatable(county_data, rownames = FALSE)
+  })
+  
+  output$bedrooms_line_plot <- renderPlot({
+    county_data <- california_rent_data[california_rent_data$OBJECTID == selected_county(), ] %>% 
+      pull(County)
+    create_bedrooms_line_plot(county_data, input$bedrooms)
+  })
+  
 }
 
-# Run the app
 shinyApp(ui = ui, server = server)
-
 ```
