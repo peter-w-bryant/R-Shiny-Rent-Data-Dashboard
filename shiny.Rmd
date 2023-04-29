@@ -72,17 +72,51 @@ us_counties = us_counties %>%
   st_as_sf()
 
 # Read in csv file of all state rental data
+all_rental_data <- read_csv("scrape/rentdata.csv") %>% 
+  mutate_at(vars(`0BR`: `4BR`), as.numeric) %>% 
+  # drop_na() %>% 
+  rename(COUNTY_NAME = County,
+         STATE_NAME = State)
+head(all_rental_data)
 
 
 
+all_rental_data_2021 = all_rental_data %>% 
+  filter(Year == 2021)
 
+us_counties %>% 
+  filter(STATE_NAME == "Massachusetts")
+
+all_rental_data_2021 %>% 
+  filter(STATE_NAME == "Massachusetts")
+
+head(us_counties)
+head(all_rental_data_2021)
+
+us_counties_df <- as.data.frame(us_counties)
+us_counties_merged <- merge(us_counties_df, all_rental_data_2021, 
+                            by.x = c("STATE_NAME", "COUNTY_NAME"), 
+                            by.y = c("STATE_NAME", "COUNTY_NAME"))
+
+
+us_counties_merged %>% 
+  filter(STATE_NAME == "Massachusetts")
+
+head(us_counties_merged)
+
+# Contains California geojson + 2021 Rent Costs per County
+us_counties_geojson <- st_as_sf(us_counties_merged)
+
+head(us_counties_geojson)
 
 state_leaflet_plot <- function() {
+  color_palette <- colorNumeric(palette = "viridis", domain = us_counties_geojson[["0BR"]])
+
   # Convert the character data to numeric
-  map <- leaflet(data = us_counties) %>%
+  map <- leaflet(data = us_counties_geojson) %>%
     addTiles() %>%
     addPolygons(
-      fillColor = "black",
+      fillColor = ~color_palette(us_counties_geojson[["0BR"]]),
       color = "black",
       weight = 1,
       opacity = 1,
