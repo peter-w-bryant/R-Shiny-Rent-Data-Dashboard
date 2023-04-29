@@ -23,6 +23,82 @@ library(DT)
 ```
 
 ```{r}
+# Extract 2021 Rental Data
+california_rent_data <- read_csv("https://uwmadison.box.com/shared/static/u9nt6aafkrf1vvcknnkjckwsy7qnrvqo.csv")
+california_rent_data_2021 <-california_rent_data %>% filter(Year == 2021)
+
+# Clean up California rent data
+california_rent_data = california_rent_data %>% 
+  select(Year, County, `0BR`, `1BR`, `2BR`, `3BR`, `4BR`) %>% 
+  mutate_at(vars(`0BR`: `4BR`), as.numeric)
+
+# Read in California geojson
+california_geojson <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rma5rzacvul5vbyfekbcnmcty.geojson") %>%
+  dplyr::select(-AdminRegion, -FireMAR, -LawMAR, -State_FIPS_ID, -County_FIPS_ID, -Shape__Area, -Shape__Length) %>% 
+  rename(County = CountyName)
+
+# Turn California geojson to DF for MERGE
+california_df <- as.data.frame(california_geojson)
+california_merged <- merge(california_df, california_rent_data_2021, by = "County")
+
+# Contains all rent data (not just 2021)
+california_rent_data <- left_join(california_rent_data, california_geojson %>% dplyr::select(County, OBJECTID),
+                                   by = c("County"))
+# Contains California geojson + 2021 Rent Costs per County
+california_geojson <- st_as_sf(california_merged) %>% 
+  mutate(`0BR` = as.numeric(`0BR`))
+```
+
+```{r}
+# Create data frame of ID, STATE NAME pairs
+us_states_state_id_mapping = read_sf("us_states.json") %>% 
+  st_drop_geometry() %>% 
+  as.data.frame() %>% 
+  select(STATE, NAME) %>% 
+  filter(NAME != "Hawaii" & NAME != "Alaska" & NAME != "Puerto Rico")
+
+# Add the name of each state to each county record
+us_counties = read_sf("us_counties.json") %>% 
+  as.data.frame() %>% 
+  rename(COUNTY_NAME = NAME) %>% 
+  left_join(us_states_state_id_mapping, by="STATE") 
+
+# Clean us counties geojson
+us_counties = us_counties %>% 
+  rename(STATE_NAME = NAME) %>% 
+  select(-LSAD, -CENSUSAREA) %>% 
+  rename(OBJECTID = GEO_ID) %>%
+  filter(STATE_NAME != "Hawaii" & STATE_NAME != "Alaska" & STATE_NAME != "Puerto Rico") %>% 
+  st_as_sf()
+
+# Read in csv file of all state rental data
+
+
+
+
+
+state_leaflet_plot <- function() {
+  # Convert the character data to numeric
+  map <- leaflet(data = us_counties) %>%
+    addTiles() %>%
+    addPolygons(
+      fillColor = "black",
+      color = "black",
+      weight = 1,
+      opacity = 1,
+      fillOpacity = 0.5,
+      layerId = ~OBJECTID
+    )
+  map
+}
+
+state_leaflet_plot()
+```
+
+
+
+
+```{r}
 normalize <- function(vec) { return((vec-min(vec))/(max(vec)-min(vec))*100) }
 ```
 
@@ -82,32 +158,7 @@ median_listing_days <- realty_data %>%
   mutate(median_days_on_market_scaled = normalize(median_days_on_market) * -1) # mult by reciprocal (lower is better)
 ```
 
-```{r}
-# Extract 2021 Rental Data
-california_rent_data <- read_csv("https://uwmadison.box.com/shared/static/u9nt6aafkrf1vvcknnkjckwsy7qnrvqo.csv")
-california_rent_data_2021 <-california_rent_data %>% filter(Year == 2021)
 
-# Clean up California rent data
-california_rent_data = california_rent_data %>% 
-  select(Year, County, `0BR`, `1BR`, `2BR`, `3BR`, `4BR`) %>% 
-  mutate_at(vars(`0BR`: `4BR`), as.numeric)
-
-# Read in California geojson
-california_geojson <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rma5rzacvul5vbyfekbcnmcty.geojson") %>%
-  dplyr::select(-AdminRegion, -FireMAR, -LawMAR, -State_FIPS_ID, -County_FIPS_ID, -Shape__Area, -Shape__Length) %>% 
-  rename(County = CountyName)
-
-# Turn California geojson to DF for MERGE
-california_df <- as.data.frame(california_geojson)
-california_merged <- merge(california_df, california_rent_data_2021, by = "County")
-
-# Contains all rent data (not just 2021)
-california_rent_data <- left_join(california_rent_data, california_geojson %>% dplyr::select(County, OBJECTID),
-                                   by = c("County"))
-# Contains California geojson + 2021 Rent Costs per County
-california_geojson <- st_as_sf(california_merged) %>% 
-  mutate(`0BR` = as.numeric(`0BR`))
-```
 
 ```{r}
 ui <- navbarPage(
@@ -170,13 +221,12 @@ ui <- navbarPage(
   # California Analysis Tab+Page
   tabPanel(
     "California",
+     mainPanel(
     tags$h2("California", 
       tags$span("Rental Property Analysis", style = "color: #BF050C; font-weight: bold;")
     ),
     p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
       ),
-
-    mainPanel(
       selectInput("bedrooms", "Select number of bedrooms:",
         choices = c("0BR", "1BR", "2BR", "3BR", "4BR"),
         selected = "1BR"),
@@ -227,6 +277,13 @@ ui <- navbarPage(
      plotOutput("bedrooms_line_plot", width = "100%", height = "300px"),
     )
   ),
+  # New York Analysis Tab+Page
+    tabPanel(
+      "New York",
+      mainPanel(
+        
+      ),
+    ),
   
   # Link to Code + Links to Data
   tabPanel(
