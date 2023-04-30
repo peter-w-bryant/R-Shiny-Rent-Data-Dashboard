@@ -65,9 +65,6 @@ us_counties = read_sf("us_counties.json") %>%
   rename(COUNTY_NAME = NAME) %>% 
   left_join(us_states_state_id_mapping, by="STATE") 
 
-
-####
-
 # Clean US counties geojson
 us_counties = us_counties %>% 
   rename(STATE_NAME = NAME) %>% 
@@ -76,48 +73,15 @@ us_counties = us_counties %>%
   filter(STATE_NAME != "Hawaii" & STATE_NAME != "Alaska" & STATE_NAME != "Puerto Rico") %>% 
   st_as_sf()
 
-# Read in California geojson
-california_geojson <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rma5rzacvul5vbyfekbcnmcty.geojson") %>%
-  dplyr::select(-AdminRegion, -FireMAR, -LawMAR, -State_FIPS_ID, -County_FIPS_ID, -Shape__Area, -Shape__Length) %>% 
-  rename(COUNTY_NAME = CountyName) %>% 
-  mutate(STATE_NAME = "California")
-
-# # Find the unique rows in california_geojson_df that are not in us_counties_df
-# unique_california_rows <- anti_join(california_geojson_df, us_counties_df, by = c("STATE_NAME", "COUNTY_NAME"))
-# california_geojson_df
-# us_counties_df
-# unique_california_rows
-# 
-# # Make sure OBJECTID is of the same data type in both data frames
-# us_counties_df$OBJECTID <- as.character(us_counties_df$OBJECTID)
-# unique_california_rows$OBJECTID <- as.character(unique_california_rows$OBJECTID)
-# 
-# # Merge the unique rows from california_geojson_df with us_counties_df
-# us_counties <- bind_rows(us_counties_df, unique_california_rows) %>% 
-#   st_as_sf()
-# 
-# us_counties_df
-
-
-######
 
 # Read in csv file of all state rental data
 all_rental_data <- read_csv("scrape/rentdata.csv") %>% 
   mutate_at(vars(`0BR`: `4BR`), as.numeric) %>% 
-  # drop_na() %>% 
   rename(COUNTY_NAME = County,
          STATE_NAME = State)
 
-all_rental_data
 all_rental_data_2021 = all_rental_data %>%
   filter(Year == 2021)
-# 
-# us_counties %>% 
-#   filter(STATE_NAME == "California")
-# 
-# all_rental_data_2021 %>% 
-#   filter(STATE_NAME == "California")
-
 
 us_counties_df <- as.data.frame(us_counties)
 us_counties_merged <- merge(us_counties_df, all_rental_data_2021, 
@@ -129,40 +93,17 @@ us_counties_merged2 <- merge(us_counties_df, all_rental_data,
                             by.x = c("STATE_NAME", "COUNTY_NAME"), 
                             by.y = c("STATE_NAME", "COUNTY_NAME"))
 
-us_counties_merged2
-us_counties_df
-
-us_counties_merged %>% 
-  filter(STATE_NAME == "Massachusetts")
-
-head(us_counties_merged)
 
 # Contains California geojson + 2021 Rent Costs per County
 us_counties_geojson <- st_as_sf(us_counties_merged)
 
-county_info <- us_counties_merged[us_counties_merged$OBJECTID == '0500000US56037', c("COUNTY_NAME", "STATE_NAME")]
-
-county_info[1]
-#state_leaflet_plot("1BR")
-
-
-county_data <- us_counties_merged2 %>%
-  filter(COUNTY_NAME == "Elko" & STATE_NAME == "Nevada")
-
-county_data
-# county_data <- us_counties_merged2 %>%
-#     filter(COUNTY_NAME == county_state_name[1] & STATE_NAME == county_state_name[2])
-
-bedrooms = "0BR"
+available_states <- us_states_state_id_mapping %>% 
+  arrange(NAME) %>% 
+  filter(NAME != "District of Columbia") %>% 
+  select(NAME) %>% 
+  rename(`Available States` = NAME)
   
-  plot <- ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
-    geom_line() +
-    xlab("Year") +
-    ylab(paste0(bedrooms, " Rent")) +
-    ggtitle(paste0("Rent Prices for ", "Elko", " County"))
-  
-
-plot
+available_states
 ```
 
 
@@ -228,6 +169,85 @@ median_listing_days <- realty_data %>%
   mutate(median_days_on_market_scaled = normalize(median_days_on_market) * -1) # mult by reciprocal (lower is better)
 ```
 
+```{r}
+compute_veighted_sum <- function(education_spending_weight, citizens_per_hospital_weight, median_home_prices_weight, median_listing_days_weight){
+  education_weighted_data <- education_spending_ppcs %>%
+      mutate(education_weighted = as.numeric(scaled_ppc) * education_spending_weight) %>% 
+      select(`State`, education_weighted)
+    
+    hospital_weighted_data <- hospitals %>%
+      mutate(hospital_weighted = as.numeric(scaled_count) * citizens_per_hospital_weight) %>% 
+      select(`State`, hospital_weighted)
+
+    median_home_prices_weighted_data <- median_listing_price %>%
+      mutate(median_home_prices_weighted = as.numeric(median_listing_price_scaled) * median_home_prices_weight) %>% 
+      select(`State`, median_home_prices_weighted)
+    
+    median_listing_days_weighted_data <- median_listing_days %>%
+      mutate(median_listing_days_weighted = as.numeric(median_days_on_market_scaled) * median_listing_days_weight) %>% 
+      select(`State`, median_listing_days_weighted)
+    
+    weighted_sum_data <- education_weighted_data %>%
+      filter(`State` != "district of columbia") %>% 
+      left_join(hospital_weighted_data, by = "State") %>% 
+      left_join(median_home_prices_weighted_data, by = "State") %>%
+      left_join(median_listing_days_weighted_data, by = "State")
+  
+    weighted_sum_data <- weighted_sum_data %>%
+      mutate(weighted_sum = education_weighted + hospital_weighted + median_home_prices_weighted + median_listing_days_weighted)
+    
+    normalized_weighted_data <- weighted_sum_data %>%
+      mutate(total_normalized_weight = (weighted_sum - min(weighted_sum)) / (max(weighted_sum) - min(weighted_sum))) %>% 
+      select(`State`, total_normalized_weight)
+
+    return(normalized_weighted_data)
+}
+```
+
+```{r}
+# Page Paragraphs
+us_analysis_pg = "This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+
+county_analysis_pg = "This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+
+table_css = "
+            #custom-datatable_wrapper .dataTables_length label,
+            #custom-datatable_wrapper .dataTables_length select,
+            #custom-datatable_wrapper .dataTables_filter label,
+            #custom-datatable_wrapper .dataTables_filter input {
+              color: black !important;
+            }
+            #custom-datatable_wrapper .dataTables_filter input {
+              background-color: #f5f5f5 !important;
+            }
+            #custom-datatable_wrapper .dataTables_length select option {
+              background-color: white !important;
+              color: black !important;
+            }
+            #custom-datatable table.dataTable {
+              background-color: white;
+            }
+            #custom-datatable table.dataTable thead th {
+              color: black;
+            }
+            #custom-datatable table.dataTable tbody tr {
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper div.dataTables_filter input {
+              background-color: #f5f5f5;
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper .dataTables_length label {
+              color: black;
+            }
+            #custom-datatable div.dataTables_wrapper .dataTables_paginate .paginate_button {
+              background-color: #f5f5f5;
+              color: black;
+            }
+          "
+
+```
+
 
 
 ```{r}
@@ -243,8 +263,7 @@ ui <- navbarPage(
       tags$h2("Badger Real Estate Group", 
         tags$span("Investment Dashboard", style = "color: #BF050C; font-weight: bold;")
       ),
-      p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
-      ),
+      p(us_analysis_pg),
       uiOutput("selected_state_header"), # Display selected state in header
       textOutput("selected_state_data"), # Display selected state data
       br(),
@@ -296,53 +315,29 @@ ui <- navbarPage(
     tags$h2("U.S. County", 
       tags$span("Rental Property Analysis", style = "color: #BF050C; font-weight: bold;")
     ),
-    p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+    p(county_analysis_pg),
+      uiOutput("selected_state_county_header"),
+    fluidRow(
+      column(
+        width = 3,
+        selectInput("bedrooms", "Select number of bedrooms:",
+          choices = c("0BR", "1BR", "2BR", "3BR", "4BR"),
+          selected = "1BR")
       ),
-      uiOutput("selected_state_county_header"), 
-      selectInput("bedrooms", "Select number of bedrooms:",
-        choices = c("0BR", "1BR", "2BR", "3BR", "4BR"),
-        selected = "1BR"),
+      column(
+        width = 3,
+        selectInput("state_optional_select", "Select a state (Optional):",
+          choices = c("All", available_states), 
+          selected = "All")
+      )
+    ),
      fluidRow(
       align = "center", # center the row horizontally
-      column(width = 8, leafletOutput("us_county_map", height = "600px")),
+      column(width = 11, leafletOutput("us_county_map", height = "600px")),
       column(
-        width = 4,
+        width = 1,
         div(DTOutput("county_info"), id = "custom-datatable"),
-          tags$style(HTML("
-            #custom-datatable_wrapper .dataTables_length label,
-            #custom-datatable_wrapper .dataTables_length select,
-            #custom-datatable_wrapper .dataTables_filter label,
-            #custom-datatable_wrapper .dataTables_filter input {
-              color: black !important;
-            }
-            #custom-datatable_wrapper .dataTables_filter input {
-              background-color: #f5f5f5 !important;
-            }
-            #custom-datatable_wrapper .dataTables_length select option {
-              background-color: white !important;
-              color: black !important;
-            }
-            #custom-datatable table.dataTable {
-              background-color: white;
-            }
-            #custom-datatable table.dataTable thead th {
-              color: black;
-            }
-            #custom-datatable table.dataTable tbody tr {
-              color: black;
-            }
-            #custom-datatable div.dataTables_wrapper div.dataTables_filter input {
-              background-color: #f5f5f5;
-              color: black;
-            }
-            #custom-datatable div.dataTables_wrapper .dataTables_length label {
-              color: black;
-            }
-            #custom-datatable div.dataTables_wrapper .dataTables_paginate .paginate_button {
-              background-color: #f5f5f5;
-              color: black;
-            }
-          "))
+          tags$style(HTML(table_css))
       )
     )
 ,
@@ -362,47 +357,8 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   
   # U.S. ANALYSIS
-  
   # reactive expression initializing weighted sum of all features per state data 
-  weighted_sum_data <- reactive({
-    education_weighted_data <- education_spending_ppcs %>%
-      mutate(education_weighted = as.numeric(scaled_ppc) * input$education_spending_weight) %>% 
-      select(`State`, education_weighted)
-    
-    hospital_weighted_data <- hospitals %>%
-      mutate(hospital_weighted = as.numeric(scaled_count) * input$citizens_per_hospital_weight) %>% 
-      select(`State`, hospital_weighted)
-
-    median_home_prices_weighted_data <- median_listing_price %>%
-      mutate(median_home_prices_weighted = as.numeric(median_listing_price_scaled) * input$median_home_prices_weight) %>% 
-      select(`State`, median_home_prices_weighted)
-    
-    median_listing_days_weighted_data <- median_listing_days %>%
-      mutate(median_listing_days_weighted = as.numeric(median_days_on_market_scaled) * input$median_listing_days_weight) %>% 
-      select(`State`, median_listing_days_weighted)
-    
-    #View(education_weighted_data)
-    
-    weighted_sum_data <- education_weighted_data %>%
-      filter(`State` != "district of columbia") %>% 
-      left_join(hospital_weighted_data, by = "State") %>% 
-      left_join(median_home_prices_weighted_data, by = "State") %>%
-      left_join(median_listing_days_weighted_data, by = "State")
-    
-    # View(weighted_sum_data)
-  
-    weighted_sum_data <- weighted_sum_data %>%
-      mutate(weighted_sum = education_weighted + hospital_weighted + median_home_prices_weighted + median_listing_days_weighted)
-    
-    # View(weighted_sum_data)
-    normalized_weighted_data <- weighted_sum_data %>%
-      mutate(total_normalized_weight = (weighted_sum - min(weighted_sum)) / (max(weighted_sum) - min(weighted_sum))) %>% 
-      select(`State`, total_normalized_weight)
-
-    
-    # View(normalized_weighted_data)
-    normalized_weighted_data
-  })
+  weighted_sum_data <- reactive({ compute_veighted_sum(input$education_spending_weight, input$citizens_per_hospital_weight, input$median_home_prices_weight, input$median_listing_days_weight)})
   
   # look up table that maps input values to data sets and column names
   data_lookup <- list(
@@ -551,12 +507,11 @@ server <- function(input, output, session) {
   })
   
   # U.S. County ANALYSIS
-  output$us_county_map <- renderLeaflet({state_leaflet_plot(input$bedrooms)})
+  output$us_county_map <- renderLeaflet({state_leaflet_plot(input$bedrooms, input$state_optional_select)})
   
   selected_county <- reactiveVal()
 
-  observeEvent(input$us_county_map_shape_click, {
-    click_data <- input$us_county_map_shape_click
+  observeEvent(input$us_county_map_shape_click, {click_data <- input$us_county_map_shape_click
     selected_county(click_data$id)
   })
   
@@ -588,7 +543,8 @@ server <- function(input, output, session) {
     # renderUI context to update the selected state in the sidebar panel
   output$selected_state_county_header <- renderUI({
     if (!is.null(selected_county())) {
-      tags$h3(paste(selected_county_info()[1], ",", selected_county_info()[2], collapse = ""), br())
+      tags$h3(paste(selected_county_info()[1], selected_county_info()[2], sep = ", "), br())
+
     } else {
       tags$h4("Showing All U.S. Counties")
     }

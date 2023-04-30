@@ -118,14 +118,21 @@ cali_leaflet_plot <- function(bedrooms) {
 
 
 # ALL STATES
-state_leaflet_plot <- function(bedrooms) {
+state_leaflet_plot <- function(bedrooms, optional_state_selection) {
   color_palette <- colorNumeric(palette = "viridis", domain = us_counties_geojson[[bedrooms]])
   
+  us_counties_geojson_copy <- st_as_sf(us_counties_geojson)
+  
+  if (optional_state_selection != "All") {
+    us_counties_geojson_copy = us_counties_geojson_copy %>% 
+      filter(STATE_NAME == optional_state_selection)
+  }
+  
   # Convert the character data to numeric
-  map <- leaflet(data = us_counties_geojson) %>%
+  map <- leaflet(data = us_counties_geojson_copy) %>%
     addTiles() %>%
     addPolygons(
-      fillColor = ~color_palette(us_counties_geojson[[bedrooms]]),
+      fillColor = ~color_palette(us_counties_geojson_copy[[bedrooms]]),
       color = "black",
       weight = 1,
       opacity = 1,
@@ -138,7 +145,7 @@ state_leaflet_plot <- function(bedrooms) {
     "bottomright",
     title = bedrooms,
     pal = color_palette,
-    values = ~as.numeric(us_counties_geojson[[bedrooms]]),
+    values = ~as.numeric(us_counties_geojson_copy[[bedrooms]]),
     opacity = 1
   )
 }
@@ -152,7 +159,7 @@ create_bedrooms_line_plot <- function(county_state_name, bedrooms) {
     geom_line() +
     xlab("Year") +
     ylab(paste0(bedrooms, " Rent")) +
-    ggtitle(paste0("Rent Prices for ", county_state_name[1]$COUNTY_NAME, " County"))
+    ggtitle(paste0("Rent Prices for ", county_state_name[1]$COUNTY_NAME, " County in", county_state_name[2]$STATE_NAME))
   
   return(plot)
   
