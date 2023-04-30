@@ -41,6 +41,8 @@ california_geojson <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rm
 california_df <- as.data.frame(california_geojson)
 california_merged <- merge(california_df, california_rent_data_2021, by = "County")
 
+california_merged
+
 # Contains all rent data (not just 2021)
 california_rent_data <- left_join(california_rent_data, california_geojson %>% dplyr::select(County, OBJECTID),
                                    by = c("County"))
@@ -63,7 +65,10 @@ us_counties = read_sf("us_counties.json") %>%
   rename(COUNTY_NAME = NAME) %>% 
   left_join(us_states_state_id_mapping, by="STATE") 
 
-# Clean us counties geojson
+
+####
+
+# Clean US counties geojson
 us_counties = us_counties %>% 
   rename(STATE_NAME = NAME) %>% 
   select(-LSAD, -CENSUSAREA) %>% 
@@ -71,33 +76,61 @@ us_counties = us_counties %>%
   filter(STATE_NAME != "Hawaii" & STATE_NAME != "Alaska" & STATE_NAME != "Puerto Rico") %>% 
   st_as_sf()
 
+# Read in California geojson
+california_geojson <- st_read("https://uwmadison.box.com/shared/static/iz2vor3rma5rzacvul5vbyfekbcnmcty.geojson") %>%
+  dplyr::select(-AdminRegion, -FireMAR, -LawMAR, -State_FIPS_ID, -County_FIPS_ID, -Shape__Area, -Shape__Length) %>% 
+  rename(COUNTY_NAME = CountyName) %>% 
+  mutate(STATE_NAME = "California")
+
+# # Find the unique rows in california_geojson_df that are not in us_counties_df
+# unique_california_rows <- anti_join(california_geojson_df, us_counties_df, by = c("STATE_NAME", "COUNTY_NAME"))
+# california_geojson_df
+# us_counties_df
+# unique_california_rows
+# 
+# # Make sure OBJECTID is of the same data type in both data frames
+# us_counties_df$OBJECTID <- as.character(us_counties_df$OBJECTID)
+# unique_california_rows$OBJECTID <- as.character(unique_california_rows$OBJECTID)
+# 
+# # Merge the unique rows from california_geojson_df with us_counties_df
+# us_counties <- bind_rows(us_counties_df, unique_california_rows) %>% 
+#   st_as_sf()
+# 
+# us_counties_df
+
+
+######
+
 # Read in csv file of all state rental data
 all_rental_data <- read_csv("scrape/rentdata.csv") %>% 
   mutate_at(vars(`0BR`: `4BR`), as.numeric) %>% 
   # drop_na() %>% 
   rename(COUNTY_NAME = County,
          STATE_NAME = State)
-head(all_rental_data)
 
-
-
-all_rental_data_2021 = all_rental_data %>% 
+all_rental_data
+all_rental_data_2021 = all_rental_data %>%
   filter(Year == 2021)
+# 
+# us_counties %>% 
+#   filter(STATE_NAME == "California")
+# 
+# all_rental_data_2021 %>% 
+#   filter(STATE_NAME == "California")
 
-us_counties %>% 
-  filter(STATE_NAME == "Massachusetts")
-
-all_rental_data_2021 %>% 
-  filter(STATE_NAME == "Massachusetts")
-
-head(us_counties)
-head(all_rental_data_2021)
 
 us_counties_df <- as.data.frame(us_counties)
 us_counties_merged <- merge(us_counties_df, all_rental_data_2021, 
                             by.x = c("STATE_NAME", "COUNTY_NAME"), 
                             by.y = c("STATE_NAME", "COUNTY_NAME"))
 
+
+us_counties_merged2 <- merge(us_counties_df, all_rental_data, 
+                            by.x = c("STATE_NAME", "COUNTY_NAME"), 
+                            by.y = c("STATE_NAME", "COUNTY_NAME"))
+
+us_counties_merged2
+us_counties_df
 
 us_counties_merged %>% 
   filter(STATE_NAME == "Massachusetts")
@@ -107,26 +140,29 @@ head(us_counties_merged)
 # Contains California geojson + 2021 Rent Costs per County
 us_counties_geojson <- st_as_sf(us_counties_merged)
 
-head(us_counties_geojson)
+county_info <- us_counties_merged[us_counties_merged$OBJECTID == '0500000US56037', c("COUNTY_NAME", "STATE_NAME")]
 
-state_leaflet_plot <- function() {
-  color_palette <- colorNumeric(palette = "viridis", domain = us_counties_geojson[["0BR"]])
+county_info[1]
+#state_leaflet_plot("1BR")
 
-  # Convert the character data to numeric
-  map <- leaflet(data = us_counties_geojson) %>%
-    addTiles() %>%
-    addPolygons(
-      fillColor = ~color_palette(us_counties_geojson[["0BR"]]),
-      color = "black",
-      weight = 1,
-      opacity = 1,
-      fillOpacity = 0.5,
-      layerId = ~OBJECTID
-    )
-  map
-}
 
-state_leaflet_plot()
+county_data <- us_counties_merged2 %>%
+  filter(COUNTY_NAME == "Elko" & STATE_NAME == "Nevada")
+
+county_data
+# county_data <- us_counties_merged2 %>%
+#     filter(COUNTY_NAME == county_state_name[1] & STATE_NAME == county_state_name[2])
+
+bedrooms = "0BR"
+  
+  plot <- ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
+    geom_line() +
+    xlab("Year") +
+    ylab(paste0(bedrooms, " Rent")) +
+    ggtitle(paste0("Rent Prices for ", "Elko", " County"))
+  
+
+plot
 ```
 
 
@@ -195,13 +231,14 @@ median_listing_days <- realty_data %>%
 
 
 ```{r}
+source('plots.R')
 ui <- navbarPage(
   theme = shinytheme("slate"),
   title = "BREG",
   
   # U.S. Analysis (Main Visualization) Tab+Page
   tabPanel(
-    "U.S. Analysis",
+    "State Analysis",
     mainPanel(
       tags$h2("Badger Real Estate Group", 
         tags$span("Investment Dashboard", style = "color: #BF050C; font-weight: bold;")
@@ -254,19 +291,20 @@ ui <- navbarPage(
   ), 
   # California Analysis Tab+Page
   tabPanel(
-    "California",
+    "County Analysis",
      mainPanel(
-    tags$h2("California", 
+    tags$h2("U.S. County", 
       tags$span("Rental Property Analysis", style = "color: #BF050C; font-weight: bold;")
     ),
     p("This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
       ),
+      uiOutput("selected_state_county_header"), 
       selectInput("bedrooms", "Select number of bedrooms:",
         choices = c("0BR", "1BR", "2BR", "3BR", "4BR"),
         selected = "1BR"),
      fluidRow(
       align = "center", # center the row horizontally
-      column(width = 8, leafletOutput("california_map", height = "600px")),
+      column(width = 8, leafletOutput("us_county_map", height = "600px")),
       column(
         width = 4,
         div(DTOutput("county_info"), id = "custom-datatable"),
@@ -308,17 +346,10 @@ ui <- navbarPage(
       )
     )
 ,
-     plotOutput("bedrooms_line_plot", width = "100%", height = "300px"),
+    conditionalPanel(condition = "$('#selected_state_county_header').text() !== 'Showing All U.S. Counties'", plotOutput("bedrooms_line_plot", width = "100%", height = "500px")),
     )
   ),
-  # New York Analysis Tab+Page
-    tabPanel(
-      "New York",
-      mainPanel(
-        
-      ),
-    ),
-  
+
   # Link to Code + Links to Data
   tabPanel(
     "Code/Sources",
@@ -519,14 +550,21 @@ server <- function(input, output, session) {
     }
   })
   
-  # CALIFORNIA ANALYSIS
-  output$california_map <- renderLeaflet({cali_leaflet_plot(input$bedrooms)})
+  # U.S. County ANALYSIS
+  output$us_county_map <- renderLeaflet({state_leaflet_plot(input$bedrooms)})
   
   selected_county <- reactiveVal()
 
-  observeEvent(input$california_map_shape_click, {
-    click_data <- input$california_map_shape_click
+  observeEvent(input$us_county_map_shape_click, {
+    click_data <- input$us_county_map_shape_click
     selected_county(click_data$id)
+  })
+  
+  selected_county_info <- reactive({
+    if (!is.null(selected_county())) {
+      county_info <- us_counties_merged[us_counties_merged$OBJECTID == selected_county(), c("COUNTY_NAME", "STATE_NAME")]
+      return(county_info)
+    }
   })
 
   output$county_info <- renderDT({
@@ -534,16 +572,26 @@ server <- function(input, output, session) {
       return(NULL)
     }
 
-    county_data <- california_rent_data[california_rent_data$OBJECTID == selected_county(), ] %>% 
-      dplyr::select(-OBJECTID, -geometry) %>% 
-      arrange(desc(Year))
+    county_data <- us_counties_merged2[us_counties_merged2$OBJECTID == selected_county(), ] %>% 
+      dplyr::select(-OBJECTID, -geometry, -STATE, -COUNTY) %>% 
+      arrange(desc(Year)) %>% 
+      select(-STATE_NAME, -COUNTY_NAME)
     datatable(county_data, rownames = FALSE)
   })
   
   output$bedrooms_line_plot <- renderPlot({
-    county_data <- california_rent_data[california_rent_data$OBJECTID == selected_county(), ] %>% 
-      pull(County)
-    create_bedrooms_line_plot(county_data, input$bedrooms)
+    if (!is.null(selected_county())) {
+      create_bedrooms_line_plot(selected_county_info(), input$bedrooms)
+    }
+  })
+  
+    # renderUI context to update the selected state in the sidebar panel
+  output$selected_state_county_header <- renderUI({
+    if (!is.null(selected_county())) {
+      tags$h3(paste(selected_county_info()[1], ",", selected_county_info()[2], collapse = ""), br())
+    } else {
+      tags$h4("Showing All U.S. Counties")
+    }
   })
   
 }

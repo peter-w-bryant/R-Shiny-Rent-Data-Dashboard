@@ -86,6 +86,8 @@ create_bar_plot <- function(data, var, var_name) {
            paper_bgcolor = 'rgba(0,0,0,0)')
 }
 
+
+# CALI
 cali_leaflet_plot <- function(bedrooms) {
   # Convert the character data to numeric
   california_geojson[[bedrooms]] <- california_geojson[[bedrooms]]
@@ -114,27 +116,45 @@ cali_leaflet_plot <- function(bedrooms) {
   )
 }
 
-create_bedrooms_line_plot <- function(county, bedrooms) {
-  if (!is.na(county[1])) {
-    county <- county[1]
-  }
-  if (!is.na(county[2])) {
-    county <- county[2]
-  }
-  if (!is.na(county[3])) {
-    county <- county[3]
-  }
+
+# ALL STATES
+state_leaflet_plot <- function(bedrooms) {
+  color_palette <- colorNumeric(palette = "viridis", domain = us_counties_geojson[[bedrooms]])
   
-  #cat("county:", county)
+  # Convert the character data to numeric
+  map <- leaflet(data = us_counties_geojson) %>%
+    addTiles() %>%
+    addPolygons(
+      fillColor = ~color_palette(us_counties_geojson[[bedrooms]]),
+      color = "black",
+      weight = 1,
+      opacity = 1,
+      fillOpacity = 0.5,
+      layerId = ~OBJECTID
+    )
+  
+  # Add a legend for the color scale
+  map %>% addLegend(
+    "bottomright",
+    title = bedrooms,
+    pal = color_palette,
+    values = ~as.numeric(us_counties_geojson[[bedrooms]]),
+    opacity = 1
+  )
+}
+
+create_bedrooms_line_plot <- function(county_state_name, bedrooms) {
   # Subset the data by county and select the bedrooms column
-  county_data <- california_rent_data %>%
-    filter(County == county) %>%
-    select(Year, !!sym(bedrooms))
+  county_data <- us_counties_merged2 %>%
+    filter(COUNTY_NAME == county_state_name[1]$COUNTY_NAME & STATE_NAME == county_state_name[2]$STATE_NAME)
   
-  # Create the line plot using ggplot2
-  ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
+  plot <- ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
     geom_line() +
     xlab("Year") +
     ylab(paste0(bedrooms, " Rent")) +
-    ggtitle(paste0("Rent Prices for ", county, " County"))
+    ggtitle(paste0("Rent Prices for ", county_state_name[1]$COUNTY_NAME, " County"))
+  
+  return(plot)
+  
+  
 }
