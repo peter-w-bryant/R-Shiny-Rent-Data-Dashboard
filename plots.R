@@ -78,7 +78,7 @@ create_bar_plot <- function(data, var, var_name) {
           axis.text.x = element_text(color = "white", size = 12, hjust = 1), # increase text size and adjust spacing
           axis.text.y = element_text(color = "white", size = 12), # increase text size
           plot.title = element_text(color = "white", size = 20)) + # increase text size
-    labs(title = paste("Top 10 States by", var_name), x = "State", y = var_name) +
+    labs(title = paste("Top States by", var_name), x = "State", y = var_name) +
     scale_fill_gradientn(colors = color_scale)
   
   ggplotly(p, tooltip = c("y")) %>%
@@ -116,23 +116,25 @@ cali_leaflet_plot <- function(bedrooms) {
   )
 }
 
-
 # ALL STATES
 state_leaflet_plot <- function(bedrooms, optional_state_selection) {
-  color_palette <- colorNumeric(palette = "viridis", domain = us_counties_geojson[[bedrooms]])
+  color_palette <- colorNumeric(palette = "viridis", domain = us_counties_2021_geojson[[bedrooms]])
   
-  us_counties_geojson_copy <- st_as_sf(us_counties_geojson)
+  us_counties_2021_geojson_copy <- st_as_sf(us_counties_2021_geojson)
   
   if (optional_state_selection != "All") {
-    us_counties_geojson_copy = us_counties_geojson_copy %>% 
+    us_counties_2021_geojson_copy = us_counties_2021_geojson_copy %>% 
       filter(STATE_NAME == optional_state_selection)
   }
   
   # Convert the character data to numeric
-  map <- leaflet(data = us_counties_geojson_copy) %>%
+  map <- leaflet(data = us_counties_2021_geojson_copy, options = leafletOptions(zoomControl = FALSE)) %>%
+    htmlwidgets::onRender("function(el, x) {
+        L.control.zoom({ position: 'topright' }).addTo(this)
+    }") %>% 
     addTiles() %>%
     addPolygons(
-      fillColor = ~color_palette(us_counties_geojson_copy[[bedrooms]]),
+      fillColor = ~color_palette(us_counties_2021_geojson_copy[[bedrooms]]),
       color = "black",
       weight = 1,
       opacity = 1,
@@ -145,23 +147,39 @@ state_leaflet_plot <- function(bedrooms, optional_state_selection) {
     "bottomright",
     title = bedrooms,
     pal = color_palette,
-    values = ~as.numeric(us_counties_geojson_copy[[bedrooms]]),
+    values = ~as.numeric(us_counties_2021_geojson_copy[[bedrooms]]),
     opacity = 1
   )
 }
 
 create_bedrooms_line_plot <- function(county_state_name, bedrooms) {
   # Subset the data by county and select the bedrooms column
-  county_data <- us_counties_merged2 %>%
-    filter(COUNTY_NAME == county_state_name[1]$COUNTY_NAME & STATE_NAME == county_state_name[2]$STATE_NAME)
+  county_data <- us_counties_all %>%
+    filter(COUNTY_NAME == county_state_name[1]$COUNTY_NAME & STATE_NAME == county_state_name[2]$STATE_NAME) %>% 
+    pivot_longer(
+      cols = contains(c("0", "1", "2", "3", "4", "5")),
+      names_to = "bedrooms",
+      values_to = "rent_prices"
+    ) %>%
+    mutate(bedrooms = factor(bedrooms, levels = rev(unique(bedrooms))))
   
-  plot <- ggplot(county_data, aes(x = Year, y = !!sym(bedrooms))) +
-    geom_line() +
+  plot <- ggplot(county_data, aes(x = Year, y = rent_prices, color = bedrooms)) +
+    geom_line(size = 0.5) +
     xlab("Year") +
-    ylab(paste0(bedrooms, " Rent")) +
-    ggtitle(paste0("Rent Prices for ", county_state_name[1]$COUNTY_NAME, " County in", county_state_name[2]$STATE_NAME))
+    ylab("Rent ($)") +
+    ggtitle(paste0("Rent Prices for ", county_state_name[1]$COUNTY_NAME))+
+    scale_color_discrete(name = "# of Bedrooms") +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = NA, colour = "white"),
+          plot.background = element_rect(fill = "#272B30", colour = NA),
+          plot.title = element_text(size = 12),
+          text = element_text(color = "snow"),
+          axis.text = element_text(color = "snow3", size = 10),
+          axis.title = element_text(size = 14),
+          strip.background = element_rect(fill="#272B30"),
+          strip.text = element_text(colour = "snow"),
+          legend.background = element_rect(fill = "transparent")) 
   
-  return(plot)
-  
-  
+  return(ggplotly(plot))
 }
