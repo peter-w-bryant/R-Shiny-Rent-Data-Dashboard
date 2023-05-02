@@ -29,7 +29,6 @@ us_states_state_id_mapping = read_sf("https://uwmadison.box.com/shared/static/vn
   as.data.frame() %>% 
   select(STATE, NAME) %>% 
   filter(NAME != "Hawaii" & NAME != "Alaska" & NAME != "Puerto Rico")
-us_states_state_id_mapping
 
 # Join the state name on each county ID
 us_counties = read_sf("https://uwmadison.box.com/shared/static/qis14d5xz0s9q8jvyqrlxmzdh5k8wzl9.json") %>% 
@@ -186,6 +185,7 @@ county_analysis_pg = "This interactive visualization allows you to analyze key f
 ```
 
 ```{r}
+source('plots.R')
 ui <- navbarPage(
   theme = shinytheme("slate"),
   title = "BREG",
@@ -268,7 +268,7 @@ ui <- navbarPage(
       )
     ),
     fluidRow(
-      splitLayout(cellWidths = c(1050,6e2), leafletOutput("us_county_map", width="1000px", height = "700px"),
+      splitLayout(cellWidths = c(1000,600), leafletOutput("us_county_map", width="1000px", height = "700px"),
     conditionalPanel(condition = "$('#selected_state_county_header').text() !== 'Showing All U.S. Counties'", plotlyOutput("bedrooms_line_plot", width = "100%", height = "700px"))),
     ),
     
@@ -293,7 +293,7 @@ server <- function(input, output, session) {
   # look up table that maps input values to data sets and column names
   data_lookup <- list(
     "Education Spending" = list(data = education_spending_ppcs, var = "PPCS", join_data = education_spending_ppcs, legend = "PPCS (Thousands)"),
-    "# Citizens Per Hospital" = list(data = hospitals, var = "People Per Hospital", join_data = hospitals, legend = "# of Citizens (Thousands"),
+    "# Citizens Per Hospital" = list(data = hospitals, var = "People Per Hospital", join_data = hospitals, legend = "# of Citizens (Thousands)"),
     "Median Home Prices" = list(data = realty_data, var = "median_listing_price", join_data = median_listing_price, legend = "Median Home Prices (Thousands)"),
     "Median Days on the Market" = list(data = realty_data, var = "median_days_on_market", join_data = median_listing_days, legend = "Median Days on the Market"))
   
@@ -322,14 +322,22 @@ server <- function(input, output, session) {
     state_name <- map.where("state", click_loc$x, click_loc$y)
     state_name <- gsub(":.*", "", state_name) # remove any characters after and including ":"
     selected_state$state <- state_name
-    
+
     if (!is.null(selected_state$state)) {
       data_info <- data_lookup[[input$map_var]]
-      data_info$join_data %>%
-        filter(State == selected_state$state) %>%
-        select(data_info$var) %>%
-        pull() %>%
-        as.character() -> selected_state$data
+      if(input$map_var != "Weighted Sum"){
+        data_info$join_data %>%
+          filter(State == selected_state$state) %>%
+          select(data_info$var) %>%
+          pull() %>%
+          as.character() -> selected_state$data
+      } else {
+        weighted_sum_data() %>% 
+          filter(State == selected_state$state) %>% 
+          select(`total_normalized_weight`) %>% 
+          pull() %>%
+          as.character() -> selected_state$data
+      }
     }
   })
   
@@ -349,10 +357,9 @@ server <- function(input, output, session) {
       join_data <- map_data("state", exact = FALSE) %>%
         left_join(weighted_data, by = c("region" = "State")) %>%
         mutate(fill_color = total_normalized_weight, region = tolower(region))
-      create_map_plot(join_data, "fill_color", "Weighted Sum (Normalized)", FALSE)
+      create_map_plot(join_data, "fill_color", "Weighted Sum (Normalized)", TRUE)
     } else {
       data_info <- data_lookup[[input$map_var]]
-      
       map_data <- map_data("state", exact = FALSE) %>%
         left_join(data_info$join_data, by = c("region" = "State"))
       if (input$map_var %in% c("Education Spending", "# Citizens Per Hospital", "Median Home Prices")) {
@@ -389,11 +396,16 @@ server <- function(input, output, session) {
         arrange(desc(!!sym(data_info$var))) %>% # Sort data in descending order
         mutate(State = fct_reorder(State, !!sym(data_info$var), .desc = TRUE)) %>%  # Reorder states in descending order
         mutate(State = str_to_title(State))
-  
       create_bar_plot(data, data_info$var, input$map_var)
     } else {
-      NULL
+      data <- weighted_sum_data() %>% 
+        select(State, total_normalized_weight) %>%
+        arrange(desc(total_normalized_weight)) %>%
+        mutate(State = factor(State, levels = unique(State))) %>% 
+        mutate(State = str_to_title(State))
+      create_bar_plot(data, "total_normalized_weight", input$map_var)
     }
+    
   })
 
   # renderPlot context to render "Median Days on the Market" seasonal plot
@@ -425,7 +437,8 @@ server <- function(input, output, session) {
     if (!is.null(selected_state$data)) {
       data_info <- data_lookup[[input$map_var]]
       column_name <- data_info$var
-      pretty_value <- prettyNum(round(as.integer(selected_state$data)), big.mark = ",")
+      if (input$map_var == "Weighted Sum") {pretty_value <- prettyNum(round(as.numeric(selected_state$data), 2), big.mark = ",")} 
+      else {pretty_value <- prettyNum(round(as.integer(selected_state$data)), big.mark = ",")}
       if (column_name == "PPCS") {
         pretty_column_name <- column_name
       } else {
