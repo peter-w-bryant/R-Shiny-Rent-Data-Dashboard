@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>About</title>
+    <style>
+        #about-page h1:hover,
+        #about-page h2:hover,
+        #about-page h3:hover,
+        #about-page h4:hover,
+        #about-page h5:hover,
+        #about-page h6:hover {
+            text-decoration-line: underline;
+            text-decoration-color: #BF050C;
+        }
+
+        #about-page h1,
+        h2,
+        #about-page h3,
+        #about-page h4,
+        #about-page h5,
+        #about-page h6 {
+            font-weight: bold;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="about-page">
+        <h2>About</h2>
+        <h3>Table of Contents</h3>
+        <ul>
+            <li><a href="#description">Project Description</a></li>
+            <li><a href="#visualizations">Interfaces/Visualizations</a></li>
+            <ul>
+                <li><a href="#state-analysis">State Analysis</a></li>
+                <ul>
+                    <li><a href="#home-prices">Median Home Prices Line Plot</a></li>
+                    <li><a href="#days-on-market">Median Days on the Market Seasonal Plot</a></li>
+                    <li><a href="#weighted-sum">Weighted Sum Map</a></li>
+                </ul>
+                <li><a href="#county-analysis">County Analysis</a></li>
+            </ul>
+            <li><a href="#data-sources">Data Sources</a></li>
+            <li><a href="#improvements">Areas of Improvement</a></li>
+            <li><a href="#download">Download Source Code</a></li>
+
+        </ul>
+
+        <h3 id="description">Project Description</h3>
+        <p>
+            This application was created as a final project for <span style="font-weight:bold">STAT 436: Data
+                Visualization</span> at the University of Wisconsin-Madison in Spring 2023.
+            As a team, we acted as a contracted, third-party design studio, with the goal of designing an interface to
+            assist the fictitious <span style="font-style:italic">Badger Real
+                Estate Group </span>(BREG) in reaching its analysis goals of reducing the risk of an unsuccessful and
+            unprofitable collection of U.S. real estate investments.
+            <br><br>
+            The entire application and all visualizations were prepared using <span style="font-weight:bold">R</span>
+            and the <a href="https://shiny.rstudio.com/" style="font-weight:bold">Shiny</a> package.
+            All source code and data used to create the interface can be found <a href="#download">below</a>.
+        </p>
+
+        <h3 id="visualizations">Interfaces/Visualizations</h3>
+        <p>
+            In total there are two separate interfaces, <span style="font-weight:bold">State Analysis</span> and <span
+                style="font-weight:bold">County Analysis</span>, each with their own set of interactive
+            visualizations.
+        </p>
+
+        <h4 id="state-analysis">State Analysis</h4>
+        <p> This interface allows a user to compare four separate variables across all mainland states in the United
+            States. When a variable is selected from
+            the options:
+        </p>
+        <ul>
+            <li>Education Spending</li>
+            <li># Citizens Per Hospital</li>
+            <li>Median Home Prices</li>
+            <li>Median Days on the Market</li>
+        </ul>
+
+        <p>
+            a heat map of the U.S. is rendered where each state is colored by its value of the selected variable in
+            relation to all other states. Some of these variable values
+            come from different data sources for different years, more on this under <a href="#data-sources">Data
+                Sources</a>.
+            <br><br>
+            Beyond just the heat map that is rendered, there is also a bar plot showing all states sorted in descending
+            order by their value of the selected variable below the map.
+            This bar plot is interactive, allowing the user to quickly hover over each bar to quickly see the values of
+            the selected variable for each state, and is color coded
+            to consistently match the color of the state on the map.
+            <br><br>
+            Additionally, there are supplemental visualizations that are rendered when the user selects either "Median
+            Home Prices" and "Median Days on the Market" from
+            the variable selection options.
+        </p>
+
+        <h5 id="home-prices">Median Home Prices Line Plot</h5>
+        <p>
+            The median home prices line plot is rendered when the user selects "Median Home Prices" from the variable
+            selection options. When no state is selected this
+            plot shows the median home prices for all states in the U.S. between 2016 and 2022. When a state is
+            selected, the plot shows the median home prices for just
+            that state in the same time period.
+        </p>
+
+        <h5 id="home-prices">Median Days on the Market Seasonal Plot</h5>
+        <p>
+            The median days on the market seasonal plot is rendered when the user selects "Median Days on the Market"
+            from the variable selection options. When no state is selected this
+            plot is hidden, but when a state is selected, the plot shows the median days on the market for just
+            that state in the same time period.
+        </p>
+
+        <h5 id="weighted-sum">Weighted Sum Map</h5>
+        <p>
+            An additional variable we included in the state analysis interface is heat map colored by a weighted sum of the four variables.
+            If a user selects "Weighted Sum" from the variable selection options, a heat map is rendered where each state is colored by its value of the weighted sum of
+            the four other variables, in relation to all other states. The weights used for the weighted sum are initially initialized to 0.25 for each variable,
+            but the user can modify this using the select input above the map for each variable. When the weights for any of the variables is modified, both the 
+            heat map and the bar plot are updated to reflect the new weighted sum.
+            <br><br>
+            This weighted sum is normalized to be between 0 and 1 across all states, meaning the state with the highest weighted sum will have the value 1, 
+            and the state with the lowest weighted sum will have the value 0. This normalization is done using the following formula:
+            <br><br>
+            <span style="font-weight:bold">Normalized Weighted Sum = (Weighted Sum - Minimum Weighted Sum) / (Maximum Weighted Sum - Minimum Weighted Sum)</span>
+        </p>
+
+
+        <h3 id="data-sources">Data Sources</h3>
+
+        <h3 id="improvements">Areas of Improvement</h3>
+
+        <h3 id="download">Download Source Code</h3>
+
+    </div>
+
+</body>
+
+</html>

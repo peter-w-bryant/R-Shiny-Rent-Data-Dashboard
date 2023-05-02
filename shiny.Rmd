@@ -182,6 +182,7 @@ compute_weighted_sum <- function(education_spending_weight, citizens_per_hospita
 us_analysis_pg = "This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
 
 county_analysis_pg = "This interactive visualization allows you to analyze key factors and assist you to make informed, low-risk investments. To start, click a variable of interest from the dropdown menu. The plot below maps your variable of interest on a US map, and if you click on a state the value the state's color is encoding will be presented. The median house prices and median days on the market will also display supplemental plots to the right."
+
 ```
 
 ```{r}
@@ -277,10 +278,10 @@ ui <- navbarPage(
 
   # Link to Code + Links to Data
   tabPanel(
-    "Code/Sources",
+    "About",
     mainPanel(
-      
-    ),
+    includeHTML("about.html")
+    )
   )
 )
 
