@@ -20,6 +20,7 @@ library(plotly)
 library(leaflet)
 library(sf)
 library(DT)
+library(lubridate)
 ```
 
 ```{r}
@@ -231,12 +232,17 @@ ui <- navbarPage(
 
     fluidRow(
       column(width = 8,
-             plotOutput("us_map", click = "plot_click", width = "100%", height = "550px")
+             plotOutput("us_map", click = "plot_click", width = "100%", height = "550px"),
+             conditionalPanel(condition = "input.map_var == 'Median Days on the Market' && $('#selected_state_header').text() !== 'Please click on a state.'",
+                 plotlyOutput("median_days_box_plot", width = "100%", height = "400px")
+              )
       ),
       column(width = 4,
              div(
                style = "text-align: center;",
-               conditionalPanel(condition = "input.map_var == 'Median Days on the Market' && $('#selected_state_header').text() !== 'Please click on a state.'", plotOutput("median_days_plot", width = "100%", height = "300px")), #  && !is.null(selected_state$state)
+                 conditionalPanel(condition = "input.map_var == 'Median Days on the Market' && $('#selected_state_header').text() !== 'Please click on a state.'",                        plotOutput("median_days_plot", width = "100%", height = "1000px")
+               ),
+               
                conditionalPanel(condition = "input.map_var == 'Median Home Prices'", plotOutput("median_price_plot", width = "100%", height = "300px")),
              )
       )
@@ -415,10 +421,39 @@ server <- function(input, output, session) {
       if (!is.null(selected_state$state)) {
         filtered_data <- realty_data %>%
           group_by(State) %>% 
-          filter(State == selected_state$state) %>% 
+          filter(State == selected_state$state & 
+                 as.numeric(substr(month_date_yyyymm, 1, 4)) != 2023) %>% 
           mutate(State = str_to_title(State))
-        filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d")
+          
+        filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d") 
+        filtered_data$year <- as.numeric(substr(filtered_data$month_date_yyyymm, 1, 4))
+      
+
         create_median_days_plot(filtered_data)
+      } else {
+        NULL 
+      }
+        
+    }else{
+        NULL
+      }
+  })
+  
+    # renderPlot context to render "Median Days on the Market" seasonal plot
+  output$median_days_box_plot <- renderPlotly({
+    if (input$map_var == "Median Days on the Market") {
+      if (!is.null(selected_state$state)) {
+        filtered_data <- realty_data %>%
+          group_by(State) %>% 
+          filter(State == selected_state$state & 
+                 as.numeric(substr(month_date_yyyymm, 1, 4)) != 2023) %>% 
+          mutate(State = str_to_title(State))
+          
+        filtered_data$month <- as.Date(paste0(filtered_data$month_date_yyyymm, "01"), format = "%Y%m%d") 
+        filtered_data$year <- as.numeric(substr(filtered_data$month_date_yyyymm, 1, 4))
+      
+
+        create_median_days_boxplot(filtered_data)
       } else {
         NULL 
       }

@@ -44,15 +44,18 @@ create_median_price_plot <- function(data){
           plot.title = element_text(size = 17))
 }
 
+# Function for creating trhe median days plot
 create_median_days_plot <- function(data){
-  ggplot(data, aes(x = month, y = median_days_on_market, color = median_days_on_market)) +
+  data$month_date_yyyymm <- ym(data$month_date_yyyymm)
+  
+  ggplot(data, aes(x = month_date_yyyymm, y = median_days_on_market, group = 1, color = median_days_on_market)) +
     geom_line(size = 1.5, alpha = 0.7) +
     scale_color_gradientn(colors = color_scale) +
-    scale_x_date(breaks = "1 year", date_labels = "%Y") +
-    facet_wrap(~State) +
-    labs(x = "Year", y = "Median Days on Market") +
-    ggtitle("Seasonal Plot of Median Days on the Market")+
-    theme(panel.grid.major = element_blank(), 
+    scale_x_date(breaks = "1 month", date_labels = "%b") +
+    facet_wrap(~reorder(year, -year), ncol = 1, scales = "free_x") +
+    labs(x = "Month", y = "Median Days on Market") +
+    ggtitle(paste0("Seasonal Median Days on the Market in ", data$State[1])) +
+    theme(panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
           panel.background = element_rect(fill = NA, colour = "white"),
           plot.background = element_rect(fill = "#272B30", colour = NA),
@@ -62,8 +65,38 @@ create_median_days_plot <- function(data){
           axis.text = element_text(color = "snow3", size = 10),
           axis.title = element_text(size = 14),
           strip.background =element_rect(fill="#272B30"),
-          strip.text = element_text(colour = "snow")) 
+          strip.text = element_text(colour = "snow"))
 }
+
+
+library(ggplot2)
+library(plotly)
+library(forcats)
+
+create_median_days_boxplot <- function(data){
+  data$month_date_yyyymm <- as.Date(paste0(data$month_date_yyyymm, "01"), format = "%Y%m%d")
+  data$year <- as.numeric(substr(data$month_date_yyyymm, 1, 4))
+  data$month <- factor(month(data$month_date_yyyymm, label = TRUE), levels = month.abb)
+  p <- ggplot(data, aes(x = month, y = median_days_on_market)) +
+    geom_boxplot(fill = "#FC8D59", color = "white", whisker.color = "white") +
+    labs(x = "Month", y = "Median Days on Market") +
+    ggtitle(paste0("Box Plot of Median Days on the Market in ", data$State[1])) +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = NA, colour = "white"),
+          plot.background = element_rect(fill = "#272B30", colour = NA),
+          plot.title = element_text(size = 17),
+          legend.position = "none",
+          text = element_text(color = "snow"),
+          axis.text = element_text(color = "snow3", size = 10),
+          axis.title = element_text(size = 14),
+          strip.background =element_rect(fill="#272B30"),
+          strip.text = element_text(colour = "snow"))
+  
+  ggplotly(p, tooltip = "all")
+  
+}
+
 
 create_bar_plot <- function(data, var, var_name) {
   p <- ggplot(data, aes(x = State, y = !!sym(var), fill = !!sym(var))) +
